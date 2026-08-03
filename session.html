@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>VibroSomatics — Session</title>
+<link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+  <div id="site-nav" class="site-nav"></div>
+
+  <div class="console">
+    <header>
+      <div class="brand">
+        <div class="logo-orb" id="logoOrb"></div>
+        <div class="brand-text">
+          <div class="name">Vibro<span>Somatics</span></div>
+          <div class="tagline">a quiet space for your frequencies</div>
+        </div>
+      </div>
+      <div class="status" id="statusPill">
+        <div class="dot"></div>
+        <span id="statusText">Resting</span>
+      </div>
+    </header>
+
+    <div class="scope-wrap" id="scopeWrap">
+      <div class="scope-frame">
+        <button class="scope-maximize-btn" id="scopeMaximizeBtn" title="Maximize">⤢</button>
+        <canvas id="scope"></canvas>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Presets</div>
+
+      <div style="margin-bottom:16px;">
+        <div class="ctrl-label" style="font-size:12.5px; margin-bottom:8px;">Solfeggio pairings<small>sets High to the tone, Low to its octave-down sub — everything else (band, drift, volume) stays as you left it</small></div>
+        <select id="solfeggioSelect" class="field-input" style="width:100%;">
+          <option value="">Choose a tone…</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom:14px;">
+        <div class="ctrl-label" style="font-size:12.5px; margin-bottom:8px;">User Defaults<small>your own saved combinations</small></div>
+        <div style="display:flex; gap:8px;">
+          <select id="userPresetSelect" class="field-input" style="flex:1;">
+            <option value="">No presets saved yet</option>
+          </select>
+          <div class="timer-btn" id="userPresetDeleteBtn" style="cursor:pointer;">✕</div>
+        </div>
+      </div>
+
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
+        <input type="text" id="presetName" class="field-input" placeholder="Preset name" style="flex:1; min-width:120px;">
+        <div class="timer-btn" id="presetSaveBtn" style="cursor:pointer;">Save as User Default</div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <label for="presetImportFile" class="timer-btn" style="cursor:pointer;">Import file</label>
+        <input type="file" id="presetImportFile" accept="application/json" style="display:none;">
+        <div class="timer-btn" id="presetExportAllBtn" style="cursor:pointer;">Export all (.json)</div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Breath Pacer <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— an optional visual rhythm behind the tones</span></div>
+      <div class="pillrow" id="breathRow" style="flex-wrap:wrap; margin-bottom:14px;">
+        <div class="pill active" data-breath="off">Off</div>
+        <div class="pill" data-breath="simple">Simple 4-4</div>
+        <div class="pill" data-breath="exhale">Ext. Exhale</div>
+        <div class="pill" data-breath="478">4-7-8</div>
+        <div class="pill" data-breath="box">Box</div>
+        <div class="pill" data-breath="coherent">Coherent</div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Breath sounds<small>soft inhale/exhale cues for eyes-closed sessions — needs the session started to play</small></div>
+        <div class="switch" id="breathSoundSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Breath volume</div>
+        <input type="range" id="breathSoundVolume" min="0" max="100" step="1" value="30">
+        <div class="ctrl-value"><span id="breathSoundVolumeVal">30</span>%</div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Engines</div>
+      <div class="pillrow" id="engineTabRow" style="margin-bottom:12px;">
+        <div class="pill active" data-tab="low">Low</div>
+        <div class="pill" data-tab="high">High</div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Combine — play both at once<small>switching tabs doesn't stop the other engine, it just keeps running quietly — this decides whether it's actually audible</small></div>
+        <div class="switch" id="combineSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="callout">Binaural needs headphones — each ear hears a different pitch. Isochronic pulses one tone and works fine over speakers.</div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Session Arc <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— glides both engines between bands together, instead of holding one</span></div>
+      <div class="pillrow" id="arcRow" style="flex-wrap:wrap;">
+        <div class="pill active" data-arc="off">Off — manual band</div>
+        <div class="pill" data-arc="focus">Focus (Beta→Alpha)</div>
+        <div class="pill" data-arc="winddown">Wind-down (Alpha→Theta)</div>
+        <div class="pill" data-arc="deeprest">Deep Rest (Theta→Delta)</div>
+        <div class="pill" data-arc="energize">Energize (Theta→Beta)</div>
+      </div>
+      <div class="callout" id="arcStatus" style="display:none;"></div>
+    </div>
+
+    <div class="section dim-target engine-panel" id="lowPanel">
+      <div class="section-title">Low Engine <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— 20–120Hz, felt as much as heard</span></div>
+      <div class="readouts" style="margin-bottom:12px;">
+        <div class="r-item l">LEFT <b id="freqLLow">—</b></div>
+        <div class="r-item r">RIGHT <b id="freqRLow">—</b></div>
+        <div class="r-item">BEAT (Δ) <b id="freqBeatLow">—</b></div>
+        <div class="r-item">BAND <b id="bandNameLow">Alpha</b></div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Mute this engine<small>isolate it instantly, independent of tab/Combine</small></div>
+        <div class="switch" id="muteLowSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="bands" id="bandRowLow" style="margin-bottom:14px;"></div>
+      <div class="pillrow" id="toneModeRowLow" style="margin-bottom:14px;">
+        <div class="pill active" data-mode="binaural">Binaural</div>
+        <div class="pill" data-mode="isochronic">Isochronic</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Carrier tone<small>base pitch, both ears</small></div>
+        <input type="range" id="carrierLow" min="20" max="120" step="1" value="60">
+        <div class="ctrl-value"><span id="carrierLowVal">60</span> Hz</div>
+      </div>
+      <div class="ctrl-row" id="beatRowLow">
+        <div class="ctrl-label">Beat frequency<small>difference between ears</small></div>
+        <input type="range" id="beatLow" class="amber" min="0.5" max="50" step="0.1" value="10">
+        <div class="ctrl-value"><span id="beatLowVal">10.0</span> Hz</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Level</div>
+        <input type="range" id="volumeLow" min="0" max="100" step="1" value="55">
+        <div class="ctrl-value"><span id="volumeLowVal">55</span>%</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">L / R balance</div>
+        <input type="range" id="balanceLow" min="-100" max="100" step="1" value="0">
+        <div class="ctrl-value"><span id="balanceLowVal">C</span></div>
+      </div>
+    </div>
+
+    <div class="section dim-target engine-panel" id="highPanel">
+      <div class="section-title">High Engine <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— 100Hz–1kHz, the classic binaural tone range</span></div>
+      <div class="readouts" style="margin-bottom:12px;">
+        <div class="r-item l">LEFT <b id="freqLHigh">—</b></div>
+        <div class="r-item r">RIGHT <b id="freqRHigh">—</b></div>
+        <div class="r-item">BEAT (Δ) <b id="freqBeatHigh">—</b></div>
+        <div class="r-item">BAND <b id="bandNameHigh">Alpha</b></div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Mute this engine<small>isolate it instantly, independent of tab/Combine</small></div>
+        <div class="switch" id="muteHighSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="bands" id="bandRowHigh" style="margin-bottom:14px;"></div>
+      <div class="pillrow" id="toneModeRowHigh" style="margin-bottom:14px;">
+        <div class="pill active" data-mode="binaural">Binaural</div>
+        <div class="pill" data-mode="isochronic">Isochronic</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Carrier tone<small>base pitch, both ears</small></div>
+        <input type="range" id="carrierHigh" min="100" max="1000" step="1" value="300">
+        <div class="ctrl-value"><span id="carrierHighVal">300</span> Hz</div>
+      </div>
+      <div class="ctrl-row" id="beatRowHigh">
+        <div class="ctrl-label">Beat frequency<small>difference between ears</small></div>
+        <input type="range" id="beatHigh" class="amber" min="0.5" max="50" step="0.1" value="10">
+        <div class="ctrl-value"><span id="beatHighVal">10.0</span> Hz</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Level</div>
+        <input type="range" id="volumeHigh" min="0" max="100" step="1" value="55">
+        <div class="ctrl-value"><span id="volumeHighVal">55</span>%</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">L / R balance</div>
+        <input type="range" id="balanceHigh" min="-100" max="100" step="1" value="0">
+        <div class="ctrl-value"><span id="balanceHighVal">C</span></div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="toggle-line">
+        <div class="ctrl-label">Variability drift<small>lets the beat frequency wander instead of holding dead still — applies to both engines together</small></div>
+        <div class="switch" id="driftSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="grid-2">
+        <div class="ctrl-row" style="grid-template-columns:70px 1fr 50px;">
+          <div class="ctrl-label" style="font-size:11.5px;">Depth</div>
+          <input type="range" id="driftDepth" class="amber" min="0" max="3" step="0.1" value="1">
+          <div class="ctrl-value"><span id="driftDepthVal">1.0</span> Hz</div>
+        </div>
+        <div class="ctrl-row" style="grid-template-columns:70px 1fr 50px;">
+          <div class="ctrl-label" style="font-size:11.5px;">Rate</div>
+          <input type="range" id="driftRate" class="amber" min="0.2" max="6" step="0.1" value="1.5">
+          <div class="ctrl-value"><span id="driftRateVal">1.5</span> /min</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="toggle-line">
+        <div class="ctrl-label">EMDR bilateral pan<small>a soft percussive tap that sweeps left-right over the frequency work</small></div>
+        <div class="switch" id="emdrSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="pill-ctrl">
+        <div class="pillrow" id="emdrSoundRow">
+          <div class="pill active" data-sound="drum">Drum</div>
+          <div class="pill" data-sound="shaker">Shaker</div>
+          <div class="pill" data-sound="bell">Bell</div>
+        </div>
+        <div class="pill-ctrl-slider">
+          <input type="range" id="emdrSpeed" min="20" max="120" step="1" value="60">
+          <div class="ctrl-value"><span id="emdrSpeedVal">60</span> bpm</div>
+        </div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Pan volume</div>
+        <input type="range" id="emdrVolume" min="0" max="100" step="1" value="35">
+        <div class="ctrl-value"><span id="emdrVolumeVal">35</span>%</div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Reverb depth<small>washes the tap into a softer, more distant texture</small></div>
+        <input type="range" id="emdrReverb" class="amber" min="0" max="100" step="1" value="30">
+        <div class="ctrl-value"><span id="emdrReverbVal">30</span>%</div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Masking Bed <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— softens the tone for open offices, high-pass filtered above 140Hz so it stays out of the low end</span></div>
+      <div class="pill-ctrl">
+        <div class="pillrow" id="noiseRow">
+          <div class="pill active" data-noise="off">Off</div>
+          <div class="pill" data-noise="pink">Pink</div>
+          <div class="pill" data-noise="white">White</div>
+        </div>
+        <div class="pill-ctrl-slider">
+          <input type="range" id="noiseLevel" min="0" max="100" step="1" value="20">
+          <div class="ctrl-value"><span id="noiseVal">20</span>%</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Ambient Layer <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— pick from your library</span></div>
+      <div style="display:flex; gap:8px; margin-bottom:8px;">
+        <select id="ambientTrackSelect" class="field-input" style="flex:1;">
+          <option value="">No files loaded yet</option>
+        </select>
+      </div>
+      <div style="margin-bottom:14px;">
+        <a href="/settings.html" class="callout" style="display:block; text-decoration:none; color:inherit;">Manage your audio library (add/remove files) in Settings →</a>
+      </div>
+
+      <div class="pill-ctrl">
+        <div class="pillrow" id="ambientModeRow">
+          <div class="pill active" data-mode="playlist">Playlist</div>
+          <div class="pill" data-mode="single">Loop one</div>
+        </div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Shuffle order</div>
+        <div class="switch" id="ambientShuffleSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="toggle-line">
+        <div class="ctrl-label" style="font-size:12.5px;">Filter low end<small>high-pass above 140Hz, so bass in the recording doesn't muddy the tones</small></div>
+        <div class="switch" id="ambientFilterSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="ctrl-row">
+        <div class="ctrl-label">Ambient volume</div>
+        <input type="range" id="ambientVolume" min="0" max="100" step="1" value="40">
+        <div class="ctrl-value"><span id="ambientVolumeVal">40</span>%</div>
+      </div>
+      <div class="callout" id="ambientNowPlaying" style="display:none;"></div>
+    </div>
+
+    <div class="section transport">
+      <div style="display:flex; flex-direction:column; gap:8px;">
+        <div class="section-title" style="margin-bottom:0;">Session Length</div>
+        <div class="timers" id="timerRow">
+          <div class="timer-btn" data-min="15">15m</div>
+          <div class="timer-btn" data-min="30">30m</div>
+          <div class="timer-btn" data-min="45">45m</div>
+          <div class="timer-btn" data-min="60">60m</div>
+          <div class="timer-btn active" data-min="0">∞</div>
+        </div>
+        <div class="pillrow" id="endingRow">
+          <div class="pill active" data-ending="fadeout">Fade out</div>
+          <div class="pill" data-ending="sunrise">Sunrise fade-up</div>
+        </div>
+      </div>
+
+      <div class="remaining" id="remaining">—:—</div>
+
+      <div class="power">
+        <div style="text-align:center;">
+          <div class="power-btn" id="powerBtn">⏻</div>
+          <div class="power-label" id="powerLabel" style="margin-top:6px;">START</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Check-in</div>
+      <div class="ctrl-label" id="moodLabel" style="margin-bottom:10px;">How are you feeling right now?</div>
+      <div class="pillrow" id="moodRow">
+        <div class="pill mood-pill" data-mood="1">😖</div>
+        <div class="pill mood-pill" data-mood="2">😕</div>
+        <div class="pill mood-pill" data-mood="3">😐</div>
+        <div class="pill mood-pill" data-mood="4">🙂</div>
+        <div class="pill mood-pill" data-mood="5">😄</div>
+      </div>
+      <div class="callout" id="sessionSummary" style="display:none; margin-top:12px;"></div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    Use headphones — the effect depends on each ear hearing a slightly different pitch. Sound continues even if you switch tabs.
+    Nothing here is medical advice; stop if you feel discomfort. <button class="focus-toggle" id="focusToggle" style="margin-left:6px;">Dim UI for work ⌄</button>
+  </div>
+
+
+<script type="module" src="/src/js/session.js"></script>
+</body>
+</html>
