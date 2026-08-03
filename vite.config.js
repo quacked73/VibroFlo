@@ -5,6 +5,7 @@ export default defineConfig({
   // Relative base so the built output also works when wrapped by Capacitor
   // (loaded from a file:// / capacitor:// origin rather than a normal https URL).
   base: "./",
+  plugins: [],
   build: {
     outDir: "dist",
     assetsDir: "assets",
