@@ -1,5 +1,10 @@
 import { defineConfig } from "vite";
-import { resolve } from "path";
+import { fileURLToPath } from "url";
+import { dirname, resolve } from "path";
+
+// __dirname doesn't exist in native ES modules (this project is "type": "module") —
+// this is the standard ESM-safe replacement.
+const __dirname = dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
   // Relative base so the built output also works when wrapped by Capacitor
