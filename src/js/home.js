@@ -2,10 +2,8 @@ import { ARCS, SOLFEGGIO_TONES } from "./constants.js";
 import { getBundledTracks } from "./sample-library.js";
 import { gradientFor } from "./card-art.js";
 import { renderNav } from "./nav.js";
-import { brandHeroHTML } from "./logo.js";
 
 renderNav("index");
-document.getElementById("brand-hero-root").innerHTML = brandHeroHTML();
 
 function capitalize(s){ return s.charAt(0).toUpperCase() + s.slice(1); }
 
