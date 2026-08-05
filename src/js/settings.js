@@ -29,10 +29,10 @@ function render(){
     actions.style.alignItems = "center";
 
     const badge = document.createElement("span");
-    badge.textContent = track.source === "bundled" ? "Bundled" : "This device only";
+    badge.textContent = track.source === "bundled" ? "Bundled" : "Yours";
     badge.style.fontSize = "10px";
     badge.style.fontFamily = "var(--mono)";
-    badge.style.color = track.source === "bundled" ? "var(--muted)" : "var(--amber)";
+    badge.style.color = track.source === "bundled" ? "var(--muted)" : "var(--green)";
     actions.appendChild(badge);
 
     if(track.source === "user"){
@@ -40,7 +40,7 @@ function render(){
       del.className = "track-remove";
       del.textContent = "✕";
       del.addEventListener("click", async () => {
-        await removeUserTrack(track.id, track.synced);
+        await removeUserTrack(track.id);
         await refresh();
       });
       actions.appendChild(del);
