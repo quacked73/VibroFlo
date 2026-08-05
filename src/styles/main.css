@@ -49,11 +49,6 @@
     align-items:center;
     gap:12px;
   }
-  .brand .logo-orb{
-    width:34px; height:34px; border-radius:50%; flex-shrink:0;
-    background:radial-gradient(circle at 32% 30%, #d9c9ff 0%, var(--green) 40%, #7d5fb8 100%);
-    box-shadow:0 0 18px 2px rgba(179,161,255,0.45);
-  }
   .brand .brand-text{ display:flex; flex-direction:column; gap:2px; }
   .brand .name{
     font-family:var(--sans);
@@ -398,13 +393,13 @@
     border:2px solid var(--line);
     background:radial-gradient(circle at 35% 30%, #453a6e, #241c3d 70%);
     color:var(--muted);
-    font-size:22px;
     cursor:pointer;
     display:flex;
     align-items:center;
     justify-content:center;
     transition:all .2s;
   }
+  .power-btn svg{ display:block; }
   .power-btn.on{
     color:var(--green);
     border-color:var(--green-dim);
@@ -612,4 +607,98 @@
   color: var(--green);
   border-color: var(--green-dim);
   background:#372a56;
+}
+
+/* ---------- Session queue progress bar (Ambient Layer) ---------- */
+.headroom-bar{
+  height:8px; border-radius:4px; background:var(--panel-2); border:1px solid var(--line);
+  overflow:hidden; position:relative;
+}
+.headroom-fill{ height:100%; width:0%; background:var(--amber); transition:width .25s, background .25s; }
+.headroom-caption{
+  display:flex; justify-content:space-between; align-items:center;
+  font-family:var(--mono); font-size:11px; color:var(--muted);
+}
+.headroom-caption b{ color:var(--text); font-weight:600; }
+.queue-row{
+  display:flex; align-items:center; justify-content:space-between;
+  background:var(--panel-2); border:1px solid var(--line); border-radius:12px;
+  padding:8px 10px; font-family:var(--sans); font-size:12px;
+}
+.queue-row .queue-name{ overflow:hidden; text-overflow:ellipsis; white-space:nowrap; margin-right:10px; }
+.queue-row .queue-actions{ display:flex; gap:10px; align-items:center; flex-shrink:0; }
+.queue-row .queue-actions span{ cursor:pointer; color:var(--muted); font-size:12px; }
+.queue-row .queue-actions span:hover{ color:var(--text); }
+.queue-row .queue-actions .queue-remove:hover{ color:var(--danger); }
+
+/* ---------- Brand hero (gradient splash — Home & About tops only) ---------- */
+.brand-hero{
+  display:flex; align-items:center; justify-content:center; gap:16px;
+  padding: 34px 24px;
+  margin: 0 0 4px;
+  border-radius: 20px 20px 0 0;
+  background: linear-gradient(135deg, #3b5fe0 0%, #9b7fe0 45%, #d99fdb 75%, #f4b8c8 100%);
+}
+.brand-hero-word{
+  font-family: -apple-system, "Segoe UI", Helvetica, Arial, sans-serif;
+  font-weight:600;
+  font-size:34px;
+  color:white;
+  letter-spacing:-0.5px;
+  display:flex;
+  align-items:baseline;
+}
+.brand-hero-word .vibro{ font-weight:400; opacity:0.92; }
+.brand-hero-word .flo{ font-weight:700; margin-left:2px; }
+@media (max-width:480px){
+  .brand-hero-word{ font-size:26px; }
+}
+
+/* ---------- One-time orientation modal (replaces the old section-gate tour) ---------- */
+.tour-modal-overlay{
+  position:fixed; inset:0; z-index:1000;
+  background:rgba(10,7,20,0.72);
+  display:flex; align-items:center; justify-content:center;
+  padding:20px;
+}
+.tour-modal{
+  width:100%; max-width:480px; max-height:82vh;
+  overflow-y:auto;
+  background:linear-gradient(180deg, var(--panel) 0%, #1a1430 100%);
+  border:1px solid var(--line);
+  border-radius:22px;
+  padding:24px 22px 20px;
+  box-shadow:0 30px 80px -20px rgba(0,0,0,0.6);
+}
+.tour-modal-title{
+  font-family:var(--sans); font-size:19px; font-weight:700; color:var(--text);
+  margin-bottom:6px;
+}
+.tour-modal-sub{
+  font-family:var(--sans); font-size:12.5px; color:var(--muted);
+  margin-bottom:18px; line-height:1.5;
+}
+.tour-modal-body{
+  display:flex; flex-direction:column; gap:14px;
+  margin-bottom:20px;
+}
+.tour-modal-item{
+  display:flex; flex-direction:column; gap:3px;
+}
+.tour-modal-item b{
+  font-family:var(--sans); font-size:13.5px; color:var(--green);
+}
+.tour-modal-item span{
+  font-family:var(--sans); font-size:12.5px; color:var(--muted); line-height:1.5;
+}
+.tour-modal-footer{
+  display:flex; justify-content:flex-end;
+  position:sticky; bottom:0;
+  padding-top:6px;
+  background:linear-gradient(180deg, transparent 0%, #1a1430 40%);
+}
+.tour-modal-ok{
+  cursor:pointer;
+  color:var(--green); border-color:var(--green-dim); background:#372a56;
+  padding:10px 22px; font-size:13px; font-weight:700;
 }
