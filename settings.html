@@ -14,6 +14,12 @@
     <div class="hero-eyebrow"><b>Settings</b></div>
 
     <div class="section dim-target" style="border-top:none; padding-top:8px;">
+      <div class="section-title">Storage</div>
+      <div id="clerk-mount" style="display:none;"></div>
+      <div class="callout" id="syncNote">Everything you add here stays on this device only — nothing is uploaded anywhere.</div>
+    </div>
+
+    <div class="section dim-target">
       <div class="section-title">Audio Library <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— everything available to the Ambient Layer on the Session page</span></div>
       <div style="margin-bottom:14px;">
         <label for="settingsFileInput" class="timer-btn" style="cursor:pointer;">+ Add audio files</label>
@@ -23,14 +29,15 @@
       <div class="callout" style="margin-top:14px;">
         Bundled samples ship with the app and can't be removed here — edit
         <code>public/audio/samples/manifest.json</code> to change the built-in
-        library. Anything you add yourself shows up under "Yours" and can be
-        removed any time.
+        library. Anything you add yourself shows up under "This device only"
+        or "Synced," depending on whether you're signed in.
       </div>
     </div>
   </div>
 
   <div class="footnote">
-    Files you add are stored locally on this device (IndexedDB) — nothing is uploaded anywhere.
+    Signed in, your files and presets live in your account and follow you across devices.
+    Signed out, everything stays local to this device only (IndexedDB) — nothing is uploaded anywhere.
   </div>
 
 <script type="module" src="/src/js/settings.js"></script>

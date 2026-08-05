@@ -4,10 +4,11 @@
 // follow-up once this structure has been proven in production.
 
 import { BANDS, ARCS, BREATH_PATTERNS, ENGINE_KEYS, SOLFEGGIO_TONES } from "./constants.js";
-import { dbGet, dbPut } from "./db.js";
+import { dbGet, dbPut, dbGetAll, makeId } from "./db.js";
 import { decodeBundledTrack } from "./sample-library.js";
-import { loadTrackList } from "./ambient-library.js";
+import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
 import { renderNav } from "./nav.js";
+import { initTour } from "./tour.js";
 
 renderNav("session");
 
@@ -760,6 +761,12 @@ renderNav("session");
       try{
         if(track.source === "bundled"){
           track.buffer = await decodeBundledTrack(ctx, track);
+        } else if(track.synced){
+          const blob = await fetchSyncedTrackBlob(track.id);
+          if(blob){
+            const arr = await blob.arrayBuffer();
+            track.buffer = await ctx.decodeAudioData(arr);
+          }
         } else if(track.blob){
           const arr = await track.blob.arrayBuffer();
           track.buffer = await ctx.decodeAudioData(arr);
@@ -821,6 +828,8 @@ renderNav("session");
   const moodRow = document.getElementById("moodRow");
   const moodLabel = document.getElementById("moodLabel");
   const sessionSummaryEl = document.getElementById("sessionSummary");
+  const progressStatsEl = document.getElementById("progressStats");
+  let lastSessionRecordId = null;
 
   moodRow.addEventListener("click", (e) => {
     const pill = e.target.closest(".mood-pill");
@@ -831,6 +840,7 @@ renderNav("session");
     if(summaryVisible){
       state.moodAfter = val;
       renderSessionSummary();
+      if(lastSessionRecordId) updateSessionHistoryMood(lastSessionRecordId, val);
     } else {
       state.moodBefore = val;
     }
@@ -1418,6 +1428,7 @@ renderNav("session");
       playAmbientTrack(state.ambientIndex, false);
     }
     updateMediaSession();
+    saveLastSetup();
   }
 
   function fadeOut(seconds){
@@ -1446,6 +1457,56 @@ renderNav("session");
     }
     sessionSummaryEl.innerHTML = "<b style=\"color:var(--text);\">Session complete</b><br>" +
       sessionSummaryEl.dataset.duration + " min · " + sessionSummaryEl.dataset.band + moodLine;
+  }
+
+  // ---------- Local session history + progress stats ----------
+  // Personal reflection only — a rolling local log, no accounts, no names,
+  // nothing clinical. A named, recallable client history is a different,
+  // more sensitive feature reserved for the subscription tier later.
+  async function logSessionToHistory(record){
+    try{ await dbPut("sessionHistory", record); }catch(e){ console.warn("Could not log session history:", e); }
+  }
+
+  async function updateSessionHistoryMood(id, moodAfter){
+    try{
+      const existing = await dbGet("sessionHistory", id);
+      if(existing){
+        existing.moodAfter = moodAfter;
+        await dbPut("sessionHistory", existing);
+      }
+    }catch(e){ console.warn("Could not update session history mood:", e); }
+    renderProgressStats();
+  }
+
+  async function computeProgressStats(){
+    const records = await dbGetAll("sessionHistory");
+    if(!records.length) return null;
+    const weekAgo = Date.now() - 7*24*60*60*1000;
+    const thisWeek = records.filter(r => new Date(r.date).getTime() >= weekAgo);
+    const shifts = records.filter(r => r.moodBefore && r.moodAfter).map(r => r.moodAfter - r.moodBefore);
+    const avgShift = shifts.length ? (shifts.reduce((a,b) => a+b, 0) / shifts.length) : null;
+    const bandCounts = {};
+    records.forEach(r => { bandCounts[r.bandDesc] = (bandCounts[r.bandDesc] || 0) + 1; });
+    const mostUsedEntry = Object.entries(bandCounts).sort((a,b) => b[1]-a[1])[0];
+    return {
+      totalSessions: records.length,
+      thisWeekCount: thisWeek.length,
+      avgShift,
+      mostUsed: mostUsedEntry ? mostUsedEntry[0] : null,
+    };
+  }
+
+  async function renderProgressStats(){
+    const stats = await computeProgressStats();
+    if(!stats){ progressStatsEl.style.display = "none"; return; }
+    const shiftText = stats.avgShift !== null
+      ? (stats.avgShift > 0 ? "+" : "") + stats.avgShift.toFixed(1)
+      : "—";
+    progressStatsEl.style.display = "block";
+    progressStatsEl.innerHTML = "<b style=\"color:var(--text);\">Your progress</b><br>" +
+      stats.thisWeekCount + " session" + (stats.thisWeekCount === 1 ? "" : "s") + " this week" +
+      " · avg mood shift " + shiftText +
+      (stats.mostUsed ? " · most used: " + stats.mostUsed : "");
   }
 
   function stop(){
@@ -1491,9 +1552,21 @@ renderNav("session");
       moodLabel.textContent = "How do you feel now?";
       [...moodRow.children].forEach(c => c.classList.remove("active"));
       renderSessionSummary();
+
+      lastSessionRecordId = makeId();
+      logSessionToHistory({
+        id: lastSessionRecordId,
+        date: new Date().toISOString(),
+        durationMin,
+        bandDesc,
+        moodBefore: state.moodBefore,
+        moodAfter: null,
+      });
+      renderProgressStats();
     }
     sessionStartedAt = null;
     updateMediaSession();
+    saveLastSetup();
   }
 
   powerBtn.addEventListener("click", () => running ? stop() : start());
@@ -1517,6 +1590,21 @@ renderNav("session");
   breathSoundVolumeVal.textContent = breathSoundVolumeSlider.value;
   renderAmbientTrackList();
   drawScope();
+  renderProgressStats();
+  initTour();
+
+  // Restore whatever was running last time, so a returning visit opens where
+  // you left off instead of the defaults every time. Applied before the
+  // quick-start params below, so an explicit link from Home still wins.
+  const LAST_SETUP_KEY = "vibrosomatics_last_setup";
+  (function restoreLastSetup(){
+    const saved = localStorage.getItem(LAST_SETUP_KEY);
+    if(!saved) return;
+    try{ applyPreset(JSON.parse(saved)); }catch(e){ console.warn("Could not restore last setup:", e); }
+  })();
+  function saveLastSetup(){
+    try{ localStorage.setItem(LAST_SETUP_KEY, JSON.stringify(snapshotPreset())); }catch(e){ /* storage full/unavailable — non-fatal */ }
+  }
 
   // Quick-start from the Home page:
   //   /session.html?preset=focus|winddown|deeprest|energize  → selects that Session Arc

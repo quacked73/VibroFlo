@@ -599,3 +599,17 @@
 .tab-row{
   display:flex; gap:8px; padding: 0 24px 16px; flex-wrap:wrap;
 }
+
+/* ---------- First-run guided tour ---------- */
+.tour-hidden{ display:none !important; }
+.tour-intro{
+  margin-bottom:14px;
+  border-color: var(--green-dim);
+}
+.tour-intro b{ color: var(--green); }
+.tour-continue-btn{
+  display:inline-block;
+  color: var(--green);
+  border-color: var(--green-dim);
+  background:#372a56;
+}

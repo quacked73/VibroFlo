@@ -4,8 +4,8 @@
 // storage layer for a single codebase that targets all three.
 
 const DB_NAME = "vibrosomaticsDB";
-const DB_VERSION = 1;
-const STORES = ["presets", "ambientTracks"];
+const DB_VERSION = 2; // v2 adds sessionHistory (local mood/progress tracking)
+const STORES = ["presets", "ambientTracks", "sessionHistory"];
 
 let dbPromise = null;
 
@@ -18,6 +18,7 @@ export function openDB(){
       const db = req.result;
       if(!db.objectStoreNames.contains("presets")) db.createObjectStore("presets");
       if(!db.objectStoreNames.contains("ambientTracks")) db.createObjectStore("ambientTracks", { keyPath: "id" });
+      if(!db.objectStoreNames.contains("sessionHistory")) db.createObjectStore("sessionHistory", { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
