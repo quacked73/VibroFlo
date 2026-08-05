@@ -1,13 +1,15 @@
 // Renders the same top nav on every page, with the current page highlighted.
 // Called once at the top of each page's own script with that page's key.
 
+import { logoSVG } from "./logo.js";
+
 export function renderNav(activePage){
   const root = document.getElementById("site-nav");
   if(!root) return;
   root.innerHTML = `
     <a href="/index.html" class="site-nav-logo">
-      <span class="logo-orb" style="width:22px;height:22px;"></span>
-      <span class="site-nav-title">VibroSomatics</span>
+      ${logoSVG(22)}
+      <span class="site-nav-title">VibroFlō</span>
     </a>
     <div class="site-nav-links">
       <a href="/index.html" data-page="index">Home</a>

@@ -1,4 +1,4 @@
-// VibroSomatics — main application module
+// VibroFlō — main application module
 // Ported from the original single-file build. Organized by feature with
 // clear section banners; a deeper per-feature module split is a planned
 // follow-up once this structure has been proven in production.
@@ -8,9 +8,11 @@ import { dbGet, dbPut, dbGetAll, makeId } from "./db.js";
 import { decodeBundledTrack } from "./sample-library.js";
 import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
 import { renderNav } from "./nav.js";
+import { logoSVG } from "./logo.js";
 import { initTour } from "./tour.js";
 
 renderNav("session");
+document.getElementById("logoMark").innerHTML = logoSVG(34);
 
 
   // ---------- Dual engines: Low (20-120Hz) and High (100Hz-1kHz) ----------
@@ -336,6 +338,7 @@ renderNav("session");
     if(running){
       sessionEndsAt = sessionMinutes > 0 ? Date.now() + sessionMinutes*60000 : null;
     }
+    updateQueueTotals();
   });
 
   function tickTimer(){
@@ -650,10 +653,12 @@ renderNav("session");
     noiseSourceGain = g;
   }
 
-  // ---------- Ambient layer: pick from the shared library, play/crossfade it ----------
-  // Adding/removing files now lives on the Settings page (settings.js), which
-  // writes through the same ambient-library.js module — this page just reads
-  // the current library and plays whatever's selected.
+  // ---------- Ambient layer: session queue, played/crossfaded in order ----------
+  // Adding/removing files from the LIBRARY lives on the Settings page
+  // (settings.js) — this page builds a QUEUE from that library for the
+  // current session: pick tracks, see the running total against session
+  // length, and playback cycles through just the queue (looping back to its
+  // start) instead of your entire library, once one exists.
   const ambientTrackSelect = document.getElementById("ambientTrackSelect");
   const ambientModeRow = document.getElementById("ambientModeRow");
   const ambientShuffleSwitch = document.getElementById("ambientShuffleSwitch");
@@ -661,6 +666,22 @@ renderNav("session");
   const ambientVolumeSlider = document.getElementById("ambientVolume");
   const ambientVolumeVal = document.getElementById("ambientVolumeVal");
   const ambientNowPlaying = document.getElementById("ambientNowPlaying");
+  const queueListEl = document.getElementById("queueList");
+  const queueBarFill = document.getElementById("queueBarFill");
+  const queueTotalLabel = document.getElementById("queueTotalLabel");
+  const queueDiffEl = document.getElementById("queueDiff");
+  const queueEmptyNote = document.getElementById("queueEmptyNote");
+  const fillRemainingBtn = document.getElementById("fillRemainingBtn");
+  const clearQueueBtn = document.getElementById("clearQueueBtn");
+
+  state.ambientQueue = []; // [{ id, name, durationSec }], built fresh each session — not persisted
+  let ambientQueuePos = 0;
+
+  function formatDuration(sec){
+    if(sec == null || isNaN(sec)) return "—:—";
+    const m = Math.floor(sec/60), s = Math.round(sec%60);
+    return m + ":" + String(s).padStart(2,"0");
+  }
 
   function renderAmbientTrackList(){
     ambientTrackSelect.innerHTML = "";
@@ -670,6 +691,9 @@ renderNav("session");
       ambientTrackSelect.appendChild(opt);
       return;
     }
+    const placeholder = document.createElement("option");
+    placeholder.value = ""; placeholder.textContent = "Add a track to this session's queue…";
+    ambientTrackSelect.appendChild(placeholder);
     const bundledGroup = document.createElement("optgroup");
     bundledGroup.label = "Bundled samples";
     const userGroup = document.createElement("optgroup");
@@ -682,15 +706,14 @@ renderNav("session");
     });
     if(bundledGroup.children.length) ambientTrackSelect.appendChild(bundledGroup);
     if(userGroup.children.length) ambientTrackSelect.appendChild(userGroup);
-    ambientTrackSelect.value = state.ambientIndex >= 0 ? String(state.ambientIndex) : "";
+    ambientTrackSelect.value = "";
   }
 
-  ambientTrackSelect.addEventListener("change", () => {
+  ambientTrackSelect.addEventListener("change", async () => {
     const idx = parseInt(ambientTrackSelect.value, 10);
     if(isNaN(idx) || !state.ambientTracks[idx]) return;
-    if(!ctx) buildGraph();
-    state.ambientIndex = idx;
-    playAmbientTrack(idx, true);
+    await addToQueue(state.ambientTracks[idx].id);
+    ambientTrackSelect.value = ""; // reset so the same or another track can be added again
   });
 
   // Loads the current library (bundled + whatever's been added via Settings)
@@ -750,6 +773,123 @@ renderNav("session");
     ambientPlaying = false;
   }
 
+  // Shared by playback and by the queue (which needs a track's real duration
+  // the moment it's added, not just right before it plays).
+  async function decodeTrackIfNeeded(track){
+    if(track.buffer) return track.buffer;
+    if(!ctx) buildGraph();
+    try{
+      if(track.source === "bundled"){
+        track.buffer = await decodeBundledTrack(ctx, track);
+      } else if(track.synced){
+        const blob = await fetchSyncedTrackBlob(track.id);
+        if(blob){
+          const arr = await blob.arrayBuffer();
+          track.buffer = await ctx.decodeAudioData(arr);
+        }
+      } else if(track.blob){
+        const arr = await track.blob.arrayBuffer();
+        track.buffer = await ctx.decodeAudioData(arr);
+      }
+      if(track.buffer) applyEdgeFade(track.buffer, 0.03);
+    }catch(err){
+      console.warn("Could not decode track:", track.name, err);
+    }
+    return track.buffer || null;
+  }
+
+  // ---------- Session queue ----------
+  async function addToQueue(trackId){
+    const track = state.ambientTracks.find(t => t.id === trackId);
+    if(!track) return;
+    const buffer = await decodeTrackIfNeeded(track);
+    state.ambientQueue.push({ id: track.id, name: track.name, durationSec: buffer ? buffer.duration : null });
+    renderQueue();
+  }
+
+  function removeFromQueue(i){
+    state.ambientQueue.splice(i, 1);
+    ambientQueuePos = 0;
+    renderQueue();
+  }
+
+  function moveQueueItem(i, dir){
+    const j = i + dir;
+    if(j < 0 || j >= state.ambientQueue.length) return;
+    const tmp = state.ambientQueue[i];
+    state.ambientQueue[i] = state.ambientQueue[j];
+    state.ambientQueue[j] = tmp;
+    ambientQueuePos = 0;
+    renderQueue();
+  }
+
+  async function fillRemainingTime(){
+    const targetSec = sessionMinutes > 0 ? sessionMinutes * 60 : null;
+    if(!targetSec || !state.ambientTracks.length) return;
+    let totalQueued = state.ambientQueue.reduce((sum,q) => sum + (q.durationSec || 0), 0);
+    const queuedIds = new Set(state.ambientQueue.map(q => q.id));
+    // prefer tracks not already queued; once those run out, allow repeats
+    // rather than stopping short of the target
+    const candidates = state.ambientTracks.filter(t => !queuedIds.has(t.id)).concat(state.ambientTracks);
+    for(const track of candidates){
+      if(totalQueued >= targetSec) break;
+      const buffer = await decodeTrackIfNeeded(track);
+      const dur = buffer ? buffer.duration : 0;
+      if(dur <= 0) continue;
+      state.ambientQueue.push({ id: track.id, name: track.name, durationSec: dur });
+      totalQueued += dur;
+    }
+    renderQueue();
+  }
+
+  function updateQueueTotals(){
+    const totalQueued = state.ambientQueue.reduce((sum,q) => sum + (q.durationSec || 0), 0);
+    const targetSec = sessionMinutes > 0 ? sessionMinutes * 60 : null;
+    queueTotalLabel.textContent = "Queued: " + formatDuration(totalQueued) + (targetSec != null ? " / " + formatDuration(targetSec) : "");
+    if(targetSec != null){
+      const pct = Math.min(100, (totalQueued / targetSec) * 100);
+      queueBarFill.style.width = pct + "%";
+      queueBarFill.style.background = totalQueued >= targetSec ? "var(--green)" : "var(--amber)";
+      const diff = targetSec - totalQueued;
+      queueDiffEl.style.display = "inline";
+      queueDiffEl.textContent = diff > 0 ? formatDuration(diff) + " short" : "covered";
+    } else {
+      queueBarFill.style.width = "0%";
+      queueDiffEl.style.display = "none";
+    }
+  }
+
+  function renderQueue(){
+    queueListEl.innerHTML = "";
+    queueEmptyNote.style.display = state.ambientQueue.length ? "none" : "block";
+    state.ambientQueue.forEach((q, i) => {
+      const row = document.createElement("div");
+      row.className = "queue-row";
+      const name = document.createElement("span");
+      name.className = "queue-name";
+      name.textContent = (i+1) + ". " + q.name + "  ·  " + formatDuration(q.durationSec);
+      const actions = document.createElement("span");
+      actions.className = "queue-actions";
+      const up = document.createElement("span"); up.textContent = "▲";
+      up.addEventListener("click", () => moveQueueItem(i, -1));
+      const down = document.createElement("span"); down.textContent = "▼";
+      down.addEventListener("click", () => moveQueueItem(i, 1));
+      const remove = document.createElement("span"); remove.className = "queue-remove"; remove.textContent = "✕";
+      remove.addEventListener("click", () => removeFromQueue(i));
+      actions.appendChild(up); actions.appendChild(down); actions.appendChild(remove);
+      row.appendChild(name); row.appendChild(actions);
+      queueListEl.appendChild(row);
+    });
+    updateQueueTotals();
+  }
+
+  fillRemainingBtn.addEventListener("click", fillRemainingTime);
+  clearQueueBtn.addEventListener("click", () => {
+    state.ambientQueue = [];
+    ambientQueuePos = 0;
+    renderQueue();
+  });
+
   // Crossfades: the outgoing track keeps playing while it fades out, overlapping
   // with the new track fading in, instead of a hard stop-then-start.
   async function playAmbientTrack(index, crossfade){
@@ -757,26 +897,7 @@ renderNav("session");
     const track = state.ambientTracks[index];
     if(!track) return;
 
-    if(!track.buffer){
-      try{
-        if(track.source === "bundled"){
-          track.buffer = await decodeBundledTrack(ctx, track);
-        } else if(track.synced){
-          const blob = await fetchSyncedTrackBlob(track.id);
-          if(blob){
-            const arr = await blob.arrayBuffer();
-            track.buffer = await ctx.decodeAudioData(arr);
-          }
-        } else if(track.blob){
-          const arr = await track.blob.arrayBuffer();
-          track.buffer = await ctx.decodeAudioData(arr);
-        }
-        if(track.buffer) applyEdgeFade(track.buffer, 0.03);
-      }catch(err){
-        console.warn("Could not decode track:", track.name, err);
-        return;
-      }
-    }
+    await decodeTrackIfNeeded(track);
     if(!track.buffer) return;
 
     const prevSource = ambientSource;
@@ -800,7 +921,7 @@ renderNav("session");
     ambientTrackGain = trackGain;
     ambientPlaying = true;
     ambientNowPlaying.style.display = "block";
-    ambientNowPlaying.textContent = "Now playing: " + track.name;
+    ambientNowPlaying.textContent = "Now playing: " + track.name + (state.ambientQueue.length ? " (queue " + (ambientQueuePos+1) + "/" + state.ambientQueue.length + ")" : "");
     renderAmbientTrackList();
 
     if(prevSource && prevGain){
@@ -812,7 +933,40 @@ renderNav("session");
     }
   }
 
+  // Resolves a queue position to the corresponding library index (tracks are
+  // shared objects — the queue just orders/selects which ones play, so
+  // decoded buffers are never duplicated).
+  function libraryIndexForQueuePos(pos){
+    const id = state.ambientQueue[pos]?.id;
+    if(!id) return -1;
+    return state.ambientTracks.findIndex(t => t.id === id);
+  }
+
+  function playQueueFromStart(crossfade){
+    if(!state.ambientQueue.length) return;
+    ambientQueuePos = 0;
+    const idx = libraryIndexForQueuePos(0);
+    if(idx === -1) return;
+    state.ambientIndex = idx;
+    playAmbientTrack(idx, crossfade);
+  }
+
   function advanceAmbientTrack(){
+    if(state.ambientQueue.length){
+      if(state.ambientShuffle && state.ambientQueue.length > 1){
+        let nextPos;
+        do{ nextPos = Math.floor(Math.random() * state.ambientQueue.length); } while(nextPos === ambientQueuePos);
+        ambientQueuePos = nextPos;
+      } else {
+        ambientQueuePos = (ambientQueuePos + 1) % state.ambientQueue.length;
+      }
+      const idx = libraryIndexForQueuePos(ambientQueuePos);
+      if(idx === -1) return;
+      state.ambientIndex = idx;
+      playAmbientTrack(idx, true);
+      return;
+    }
+    // no queue built — fall back to cycling the whole library, same as before
     if(!state.ambientTracks.length) return;
     let next;
     if(state.ambientShuffle && state.ambientTracks.length > 1){
@@ -894,6 +1048,7 @@ renderNav("session");
       arcMode: state.arcMode, breathPattern: state.breathPattern,
       breathSoundOn: state.breathSoundOn, breathSoundVolume: state.breathSoundVolume,
       endingStyle: state.endingStyle, sessionMinutes: sessionMinutes,
+      ambientQueue: state.ambientQueue.map(q => ({ id: q.id, name: q.name, durationSec: q.durationSec })),
     };
   }
 
@@ -987,6 +1142,12 @@ renderNav("session");
       sessionMinutes = data.sessionMinutes;
       [...timerRow.children].forEach(c => c.classList.toggle("active", parseInt(c.dataset.min, 10) === sessionMinutes));
     }
+
+    // Restore the saved ambient queue too, dropping any tracks that no
+    // longer exist in the library (e.g. a user upload that got removed).
+    state.ambientQueue = (data.ambientQueue || []).filter(q => state.ambientTracks.some(t => t.id === q.id));
+    ambientQueuePos = 0;
+    renderQueue();
   }
 
   function renderPresetList(){
@@ -1027,10 +1188,29 @@ renderNav("session");
     savePresetsToDB();
   });
 
+  const presetImageInput = document.getElementById("presetImageInput");
+  const presetImagePreview = document.getElementById("presetImagePreview");
+  let pendingPresetImage = null; // data URL, or null if none chosen
+
+  presetImageInput.addEventListener("change", () => {
+    const file = presetImageInput.files[0];
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      pendingPresetImage = reader.result;
+      presetImagePreview.style.backgroundImage = `url(${pendingPresetImage})`;
+      presetImagePreview.style.display = "block";
+    };
+    reader.readAsDataURL(file);
+  });
+
   document.getElementById("presetSaveBtn").addEventListener("click", () => {
     const name = presetNameInput.value.trim() || ("Preset " + (state.presets.length + 1));
-    state.presets.push({ name, data: snapshotPreset() });
+    state.presets.push({ id: makeId(), name, data: snapshotPreset(), imageDataUrl: pendingPresetImage });
     presetNameInput.value = "";
+    pendingPresetImage = null;
+    presetImageInput.value = "";
+    presetImagePreview.style.display = "none";
     renderPresetList();
     savePresetsToDB();
   });
@@ -1067,6 +1247,7 @@ renderNav("session");
       state.presets = all;
       renderPresetList();
     }
+    window.dispatchEvent(new Event("vibrosomatics:presets-ready"));
   })();
 
   // ---------- EMDR bilateral pan: soft percussion synthesis ----------
@@ -1185,15 +1366,21 @@ renderNav("session");
       ENGINE_KEYS.forEach(key => {
         const e = state.engines[key];
         e.beatBase = arcBeatBase; // both engines follow the same arc target together
-        e.beatCurrent = Math.min(clampMax, Math.max(clampMin, e.beatBase + sharedWander));
-        applyEngineFrequencies(key);
+        const next = Math.min(clampMax, Math.max(clampMin, e.beatBase + sharedWander));
+        if(Math.abs(next - e.beatCurrent) > 0.0005){
+          e.beatCurrent = next;
+          applyEngineFrequencies(key);
+        }
       });
     } else {
       ENGINE_KEYS.forEach(key => {
         const e = state.engines[key];
         const b = BANDS[e.currentBand];
-        e.beatCurrent = Math.min(b.max, Math.max(b.min, e.beatBase + sharedWander));
-        applyEngineFrequencies(key);
+        const next = Math.min(b.max, Math.max(b.min, e.beatBase + sharedWander));
+        if(Math.abs(next - e.beatCurrent) > 0.0005){
+          e.beatCurrent = next;
+          applyEngineFrequencies(key);
+        }
       });
     }
     driftTimerId = setTimeout(driftTick, SCHED_WAKE_MS);
@@ -1219,7 +1406,7 @@ renderNav("session");
       const highLabel = "High " + BANDS[state.engines.high.currentBand].label;
       const activeLabel = state.combineOn ? (lowLabel + " + " + highLabel) : (state.activeTab === "low" ? lowLabel : highLabel);
       navigator.mediaSession.metadata = new MediaMetadata({
-        title: "VibroSomatics Portable",
+        title: "VibroFlō",
         artist: activeLabel,
         album: "Binaural session"
       });
@@ -1423,9 +1610,13 @@ renderNav("session");
       armNextEmdrHit();
       emdrScheduler();
     }
-    if(state.ambientTracks.length && !ambientPlaying){
-      if(state.ambientIndex === -1) state.ambientIndex = 0;
-      playAmbientTrack(state.ambientIndex, false);
+    if(!ambientPlaying){
+      if(state.ambientQueue.length){
+        playQueueFromStart(false);
+      } else if(state.ambientTracks.length){
+        if(state.ambientIndex === -1) state.ambientIndex = 0;
+        playAmbientTrack(state.ambientIndex, false);
+      }
     }
     updateMediaSession();
     saveLastSetup();
@@ -1589,6 +1780,7 @@ renderNav("session");
   ambientVolumeVal.textContent = ambientVolumeSlider.value;
   breathSoundVolumeVal.textContent = breathSoundVolumeSlider.value;
   renderAmbientTrackList();
+  renderQueue();
   drawScope();
   renderProgressStats();
   initTour();
@@ -1611,18 +1803,38 @@ renderNav("session");
   //   /session.html?solfeggio=528                            → applies that tone pairing
   //   /session.html?ambient=<track id>                       → pre-selects that ambient track
   // Each just triggers the same control a manual tap would — no separate
-  // "preset" data model to keep in sync with the real controls.
+  // "preset" data model to keep in sync with the real controls. The banner
+  // below is purely visual confirmation that the tap from Home actually
+  // landed, since otherwise the only sign is a slider having moved somewhere
+  // further down the page.
+  const quickStartBanner = document.getElementById("quickStartBanner");
+  let quickStartHideTimer = null;
+
+  function showQuickStartBanner(message){
+    quickStartBanner.innerHTML = `<b style="color:var(--green);">✓ Ready</b> — ${message}, loaded from Home.`;
+    quickStartBanner.style.display = "block";
+    clearTimeout(quickStartHideTimer);
+    quickStartHideTimer = setTimeout(() => {
+      quickStartBanner.style.display = "none";
+    }, 9000);
+  }
+
   (function applyQuickStartParams(){
     const params = new URLSearchParams(location.search);
     const preset = params.get("preset");
-    if(preset){
+    if(preset && ARCS[preset]){
       const pill = arcRow.querySelector(`[data-arc="${preset}"]`);
-      if(pill) pill.click();
+      if(pill){
+        pill.click();
+        showQuickStartBanner(`${ARCS[preset].label} arc selected`);
+      }
     }
     const solfeggioHz = params.get("solfeggio");
     if(solfeggioHz){
+      const tone = SOLFEGGIO_TONES.find(t => String(t.hz) === solfeggioHz);
       solfeggioSelect.value = solfeggioHz;
       solfeggioSelect.dispatchEvent(new Event("change"));
+      showQuickStartBanner(tone ? tone.label : (solfeggioHz + " Hz pairing"));
     }
   })();
 
@@ -1635,4 +1847,28 @@ renderNav("session");
     if(idx === -1) return;
     state.ambientIndex = idx;
     renderAmbientTrackList();
+    showQuickStartBanner(`"${state.ambientTracks[idx].name}" queued up`);
+  }, { once: true });
+
+  // A custom Home tile: /session.html?loadPreset=<id> restores the entire
+  // saved setup in one shot — engines, drift, EMDR, arc, and the ambient
+  // queue all together, not just a single control like the other quick-start
+  // params. Waits for both the preset list and the ambient library to have
+  // finished loading, since the queue restore needs the library present.
+  function tryLoadPresetFromUrl(){
+    const id = new URLSearchParams(location.search).get("loadPreset");
+    if(!id) return;
+    const preset = state.presets.find(p => p.id === id);
+    if(!preset) return;
+    applyPreset(preset.data);
+    showQuickStartBanner(`"${preset.name}"`);
+  }
+  let presetsReady = false, ambientReadyForPreset = false;
+  window.addEventListener("vibrosomatics:presets-ready", () => {
+    presetsReady = true;
+    if(ambientReadyForPreset) tryLoadPresetFromUrl();
+  }, { once: true });
+  window.addEventListener("vibrosomatics:ambient-ready", () => {
+    ambientReadyForPreset = true;
+    if(presetsReady) tryLoadPresetFromUrl();
   }, { once: true });

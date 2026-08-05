@@ -3,7 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>VibroSomatics — Session</title>
+<title>VibroFlō — Session</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/src/styles/main.css">
 </head>
 <body>
@@ -13,9 +14,9 @@
   <div class="console">
     <header>
       <div class="brand">
-        <div class="logo-orb" id="logoOrb"></div>
+        <div id="logoMark" style="display:flex; flex-shrink:0;"></div>
         <div class="brand-text">
-          <div class="name">Vibro<span>Somatics</span></div>
+          <div class="name">Vibro<span>Flō</span></div>
           <div class="tagline">a quiet space for your frequencies</div>
         </div>
       </div>
@@ -31,6 +32,8 @@
         <canvas id="scope"></canvas>
       </div>
     </div>
+
+    <div class="callout" id="quickStartBanner" style="display:none; margin:0 24px 14px; border-color:var(--green-dim);"></div>
 
     <div class="section dim-target" id="tour-presets">
       <div class="section-title">Presets</div>
@@ -52,9 +55,14 @@
         </div>
       </div>
 
+      <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; align-items:center;">
+        <input type="text" id="presetName" class="field-input" placeholder="Preset name — e.g. Deep Relaxation" style="flex:1; min-width:120px;">
+        <label for="presetImageInput" class="timer-btn" style="cursor:pointer;">+ Cover image</label>
+        <input type="file" id="presetImageInput" accept="image/*" style="display:none;">
+        <div id="presetImagePreview" style="display:none; width:34px; height:34px; border-radius:8px; background-size:cover; background-position:center; border:1px solid var(--line); flex-shrink:0;"></div>
+      </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px;">
-        <input type="text" id="presetName" class="field-input" placeholder="Preset name" style="flex:1; min-width:120px;">
-        <div class="timer-btn" id="presetSaveBtn" style="cursor:pointer;">Save as User Default</div>
+        <div class="timer-btn" id="presetSaveBtn" style="cursor:pointer;">Save as User Default — shows up on Home too</div>
       </div>
       <div style="display:flex; gap:8px; flex-wrap:wrap;">
         <label for="presetImportFile" class="timer-btn" style="cursor:pointer;">Import file</label>
@@ -250,15 +258,29 @@
     </div>
 
     <div class="section dim-target" id="tour-ambient">
-      <div class="section-title">Ambient Layer <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— pick from your library</span></div>
+      <div class="section-title">Ambient Layer <span style="color:var(--muted); font-weight:400; text-transform:none; letter-spacing:0;">— queue tracks for this session</span></div>
       <div style="display:flex; gap:8px; margin-bottom:8px;">
         <select id="ambientTrackSelect" class="field-input" style="flex:1;">
-          <option value="">No files loaded yet</option>
+          <option value="">Add a track to this session's queue…</option>
         </select>
       </div>
       <div style="margin-bottom:14px;">
         <a href="/settings.html" class="callout" style="display:block; text-decoration:none; color:inherit;">Manage your audio library (add/remove files) in Settings →</a>
       </div>
+
+      <div style="margin-bottom:6px;">
+        <div class="headroom-bar"><div class="headroom-fill" id="queueBarFill"></div></div>
+      </div>
+      <div class="headroom-caption" style="margin-bottom:12px;">
+        <span id="queueTotalLabel">Queued: 0:00</span>
+        <b id="queueDiff" style="display:none;"></b>
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:12px;">
+        <div class="timer-btn" id="fillRemainingBtn" style="cursor:pointer;">Fill remaining time</div>
+        <div class="timer-btn" id="clearQueueBtn" style="cursor:pointer;">Clear queue</div>
+      </div>
+      <div id="queueList" style="display:flex; flex-direction:column; gap:6px; margin-bottom:14px;"></div>
+      <div class="callout" id="queueEmptyNote">No tracks queued yet — playlist mode will cycle through your whole library instead. Add a few above to build this session's set.</div>
 
       <div class="pill-ctrl">
         <div class="pillrow" id="ambientModeRow">
@@ -302,7 +324,12 @@
 
       <div class="power">
         <div style="text-align:center;">
-          <div class="power-btn" id="powerBtn">⏻</div>
+          <div class="power-btn" id="powerBtn">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
           <div class="power-label" id="powerLabel" style="margin-top:6px;">START</div>
         </div>
       </div>

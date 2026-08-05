@@ -1,6 +1,9 @@
 import { renderNav } from "./nav.js";
+import { brandHeroHTML, companyMarkSVG } from "./logo.js";
 
 renderNav("about");
+document.getElementById("brand-hero-root").innerHTML = brandHeroHTML();
+document.getElementById("company-mark-root").innerHTML = companyMarkSVG(14);
 
 const tabs = document.querySelectorAll(".tab-row .pill");
 const panels = {
