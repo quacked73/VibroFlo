@@ -146,31 +146,17 @@ async function init(){
     items: customItems,
   });
 
-  renderRow(rowsRoot, {
-    title: "Session Arcs",
-    sub: "Guided drift from one band to another over the session",
-    items: arcItems,
-  });
-
-  renderRow(rowsRoot, {
-    title: "Solfeggio Pairings",
-    sub: "High tone paired with its octave-down sub",
-    items: solfeggioItems,
-  });
-
-  renderRow(rowsRoot, {
-    title: "Ambient Soundscapes",
-    sub: "From the bundled library",
-    items: ambientItems.slice(0, 10),
-  });
-
   const focusItems = [
     arcItems.find(i => i.href.includes("preset=focus")),
     solfeggioItems.find(i => i.title.startsWith("852")),
     solfeggioItems.find(i => i.title.startsWith("741")),
     ...ambientItems.filter(i => i.desc.includes("focus")),
   ].filter(Boolean);
-  renderRow(rowsRoot, { title: "For Focus", items: focusItems });
+  renderRow(rowsRoot, {
+    title: "For Focus",
+    sub: "When you need steady, alert attention for work or study",
+    items: focusItems,
+  });
 
   const relaxItems = [
     arcItems.find(i => i.href.includes("preset=winddown")),
@@ -179,7 +165,29 @@ async function init(){
     solfeggioItems.find(i => i.title.startsWith("174")),
     ...ambientItems.filter(i => i.desc.includes("meditation") || i.desc.includes("water")).slice(0, 4),
   ].filter(Boolean);
-  renderRow(rowsRoot, { title: "For Relaxation", items: relaxItems });
+  renderRow(rowsRoot, {
+    title: "For Relaxation",
+    sub: "When you want to unwind, ease anxiety, or settle in for sleep",
+    items: relaxItems,
+  });
+
+  renderRow(rowsRoot, {
+    title: "Session Arcs",
+    sub: "Lets a session gradually shift you — like easing from alert focus into calm — automatically over time",
+    items: arcItems,
+  });
+
+  renderRow(rowsRoot, {
+    title: "Solfeggio Pairings",
+    sub: "Specific tone frequencies some people use as part of a calming or focus routine",
+    items: solfeggioItems,
+  });
+
+  renderRow(rowsRoot, {
+    title: "Ambient Soundscapes",
+    sub: "Real recordings — waves, birds, and more — to play under the tones",
+    items: ambientItems.slice(0, 10),
+  });
 }
 
 init();
