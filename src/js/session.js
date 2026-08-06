@@ -693,8 +693,11 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       const rightColor = levelsToColor(levels.right);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
-      screenStrobeLeft.style.opacity = (brightnessCeiling * fadeInFactor).toFixed(3);
-      screenStrobeRight.style.opacity = (brightnessCeiling * fadeInFactor).toFixed(3);
+      // Deliberately no fadeInFactor here — decoding a real signal should
+      // faithfully match it for accurate comparison, not ease into it the
+      // way the synthetic mode does.
+      screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
+      screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
     } else if(hasAudioStrobe){
       if(screenStrobeCurrentMode !== "decode-brightness"){
         screenStrobeCurrentMode = "decode-brightness";
@@ -702,8 +705,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeRight.style.backgroundColor = "";
         showDecodeStatus("AudioStrobe signal detected — showing decoded brightness");
       }
-      screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling * fadeInFactor).toFixed(3);
-      screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling * fadeInFactor).toFixed(3);
+      screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
+      screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
     } else {
       if(screenStrobeCurrentMode !== "synthetic"){
         screenStrobeCurrentMode = "synthetic";
@@ -955,7 +958,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // Same tap point, for reading a real AudioStrobe/SpectraStrobe signal
     // already embedded in whatever's playing — separate purpose from the
     // analyser above, which just measures overall loudness for Follow Music.
-    luminousDecoderBank = buildDecoderBank(ctx, ambientGain);
+    luminousDecoderBank = buildDecoderBank(ctx, ambientHighpass);
 
     // Breath sound: two continuously-looping filtered noise sources, silent by
     // default, swelled up and down by the breath-phase envelope in drawScope.

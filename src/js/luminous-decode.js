@@ -15,7 +15,8 @@
 
 const AUDIOSTROBE_FREQ = 19200;
 const SPECTRA_FREQS = { ref: 18200, a: 18700, b: 19200, c: 19700 };
-const NOISE_FLOOR = 0.004; // below this, treat it as "no real signal," not just quiet content
+const NOISE_REF_FREQ = 17000; // clearly outside any AudioStrobe/SpectraStrobe band, used as a live noise-floor baseline instead of one fixed guessed number
+const MIN_SIGNAL_RATIO = 2.5; // target band must exceed the noise baseline by this multiple to count as "real," not just ambient hiss
 
 export function buildDecoderBank(ctx, sourceNode){
   const splitter = ctx.createChannelSplitter(2);
@@ -25,15 +26,15 @@ export function buildDecoderBank(ctx, sourceNode){
     const filter = ctx.createBiquadFilter();
     filter.type = "bandpass";
     filter.frequency.value = freq;
-    filter.Q.value = 40; // narrow — isolate just this tone, not neighboring content
+    filter.Q.value = 12; // wider than a "pure" isolation filter — a narrower one is more selective but reacts more slowly to amplitude changes, which shows up as lag at faster pulse rates
     splitter.connect(filter, channelIndex);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 512; // small on purpose — this is amplitude-of-a-narrow-band, not spectral detail
+    analyser.fftSize = 256; // smaller window, less inherent smoothing — favors catching fast changes over a perfectly stable reading
     filter.connect(analyser);
     return { analyser, buffer: new Float32Array(analyser.fftSize) };
   }
 
-  const freqs = { as: AUDIOSTROBE_FREQ, ref: SPECTRA_FREQS.ref, a: SPECTRA_FREQS.a, b: SPECTRA_FREQS.b, c: SPECTRA_FREQS.c };
+  const freqs = { as: AUDIOSTROBE_FREQ, ref: SPECTRA_FREQS.ref, a: SPECTRA_FREQS.a, b: SPECTRA_FREQS.b, c: SPECTRA_FREQS.c, noise: NOISE_REF_FREQ };
   const bank = { left: {}, right: {}, refHistory: [] };
   for(const [key, freq] of Object.entries(freqs)){
     bank.left[key] = bandpass(freq, 0);
@@ -56,6 +57,15 @@ export function readDecoderLevels(bank){
   return out;
 }
 
+// A live noise baseline instead of one fixed guessed number — real tracks
+// encode this signal at whatever level their author chose, and system
+// volume/hardware differences shift the absolute level further. Comparing
+// against a nearby quiet frequency, rather than an absolute threshold,
+// adapts to whatever the actual playback conditions happen to be.
+function noiseBaseline(levels){
+  return Math.max(0.0008, (levels.left.noise + levels.right.noise) / 2);
+}
+
 // SpectraStrobe's reference tone alternates hard left/right at 10-50 times a
 // second, signaling "this is SpectraStrobe, not just AudioStrobe." Rather
 // than try to precisely clock that rate, this checks a short rolling window
@@ -72,12 +82,14 @@ export function detectSpectraStrobeReference(bank, levels){
   for(let i=1;i<bank.refHistory.length;i++){
     if((bank.refHistory[i] > 0) !== (bank.refHistory[i-1] > 0)) flips++;
   }
-  const strongEnough = Math.max(...bank.refHistory.map(Math.abs)) > NOISE_FLOOR;
+  const baseline = noiseBaseline(levels);
+  const strongEnough = Math.max(...bank.refHistory.map(Math.abs)) > baseline * MIN_SIGNAL_RATIO;
   return strongEnough && flips >= REF_HISTORY_LEN * 0.4;
 }
 
 export function audioStrobeSignalPresent(levels){
-  return Math.max(levels.left.as, levels.right.as) > NOISE_FLOOR;
+  const baseline = noiseBaseline(levels);
+  return Math.max(levels.left.as, levels.right.as) > baseline * MIN_SIGNAL_RATIO;
 }
 
 // Best-effort frequency-to-color assignment (ascending frequency → R/G/B) —
