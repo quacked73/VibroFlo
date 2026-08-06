@@ -13,7 +13,7 @@ import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
-import { buildDecoderBank, readDecoderLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, levelsToColor } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, levelsToColor } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -604,6 +604,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeRunning = true;
     screenStrobePhaseStart = performance.now();
     screenStrobeCurrentMode = null;
+    luminousDecodeLastTime = 0;
 
     // Fixed-duration backup, using whatever Session Length is already set —
     // capped at 20 minutes even if the session itself is set to run
@@ -679,10 +680,19 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // flicker above if no usable signal actually turns up despite the track
   // being flagged — a mis-tagged file or one where lossy compression ate
   // the embedded tone shouldn't just go dark with no explanation.
+  let luminousDecodeLastTime = 0;
+
   function renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor){
-    const levels = readDecoderLevels(luminousDecoderBank);
-    const isSpectra = detectSpectraStrobeReference(luminousDecoderBank, levels);
-    const hasAudioStrobe = audioStrobeSignalPresent(levels);
+    const now = performance.now();
+    const dtSeconds = luminousDecodeLastTime ? (now - luminousDecodeLastTime) / 1000 : 1/60;
+    luminousDecodeLastTime = now;
+
+    const rawLevels = readDecoderLevels(luminousDecoderBank);
+    // Detection stays on the raw signal — smoothing is for how it looks
+    // rendered, not for deciding whether a real signal is present.
+    const isSpectra = detectSpectraStrobeReference(luminousDecoderBank, rawLevels);
+    const hasAudioStrobe = audioStrobeSignalPresent(rawLevels);
+    const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
 
     if(isSpectra){
       if(screenStrobeCurrentMode !== "decode-color"){

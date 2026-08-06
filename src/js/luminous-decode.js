@@ -57,6 +57,30 @@ export function readDecoderLevels(bank){
   return out;
 }
 
+// Real AVS hardware never drives an LED directly from a raw instantaneous
+// reading — it runs the decoded signal through an envelope follower first,
+// smoothing it into a clean rise and fall. Without an equivalent stage here,
+// raw per-frame jitter can look like an inconsistent or outright different
+// flash rate even when the underlying detection is accurate. Attack is fast
+// (catches real brightness increases promptly); release is a bit slower
+// (avoids a flickery, noisy fall-off) — the same asymmetric shape real
+// envelope followers use.
+const ATTACK_MS = 8, RELEASE_MS = 25;
+
+export function smoothLevels(bank, rawLevels, dtSeconds){
+  if(!bank.smoothed) bank.smoothed = { left: {}, right: {} };
+  for(const side of ["left", "right"]){
+    for(const key of Object.keys(rawLevels[side])){
+      const prev = bank.smoothed[side][key] ?? 0;
+      const raw = rawLevels[side][key];
+      const tc = (raw > prev ? ATTACK_MS : RELEASE_MS) / 1000;
+      const alpha = 1 - Math.exp(-Math.max(0.001, dtSeconds) / tc);
+      bank.smoothed[side][key] = prev + (raw - prev) * alpha;
+    }
+  }
+  return bank.smoothed;
+}
+
 // A live noise baseline instead of one fixed guessed number — real tracks
 // encode this signal at whatever level their author chose, and system
 // volume/hardware differences shift the absolute level further. Comparing
