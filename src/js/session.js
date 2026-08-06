@@ -12,6 +12,7 @@ import { logoSVG } from "./logo.js";
 import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
+import { getLuminousPrefs } from "./luminous-prefs.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -62,6 +63,10 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   const engineTabRow = document.getElementById("engineTabRow");
   const combineSwitch = document.getElementById("combineSwitch");
 
+  // Configured on the Luminous settings page, not here — read once at load.
+  // Session only exposes simple on/off toggles; the detailed tuning lives there.
+  const luminousPrefs = getLuminousPrefs();
+
   let state = {
     engines: {
       low:  { carrier: 60,  beatBase: 10, beatCurrent: 10, currentBand: "alpha", toneMode: "binaural", volume: 55, balance: 0, muted: false },
@@ -70,9 +75,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     activeTab: "low",
     combineOn: false,
     luminousOn: false,
-    luminousEyeDrift: 40,
-    luminousBrightnessVar: 30,
-    luminousFollowMusic: false,
+    luminousEyeDrift: luminousPrefs.eyeDrift,
+    luminousBrightnessVar: luminousPrefs.brightnessVar,
+    luminousFollowMusic: luminousPrefs.followMusic,
     screenStrobeOn: false,
     driftOn: false,
     driftDepth: 1,
@@ -342,15 +347,11 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // brightness) with their own independent timebase and phase constants.
   const luminousSwitch = document.getElementById("luminousSwitch");
   const luminousNote = document.getElementById("luminousNote");
-  const luminousEyeDriftSlider = document.getElementById("luminousEyeDrift");
-  const luminousEyeDriftVal = document.getElementById("luminousEyeDriftVal");
-  const luminousBrightnessVarSlider = document.getElementById("luminousBrightnessVar");
-  const luminousBrightnessVarVal = document.getElementById("luminousBrightnessVarVal");
-  const luminousFollowMusicSwitch = document.getElementById("luminousFollowMusicSwitch");
   const LUMINOUS_FREQ = 19200;
   const LUMINOUS_BASE_STRENGTH = 0.8;
   let luminousLeft = null, luminousRight = null;
   let luminousPhaseTime = 0; // independent of driftPhaseTime, so it doesn't move in lockstep with tone drift
+  let luminousFadeInStart = 0;
   let luminousSuppressed = false; // true while the current ambient track already has its own embedded light signal
 
   function buildLuminousChannel(pan){
@@ -375,7 +376,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     lfoOffset.connect(gate.gain);
 
     const strength = ctx.createGain();
-    strength.gain.value = LUMINOUS_BASE_STRENGTH;
+    strength.gain.value = 0; // starts silent — startLuminous() fades this up, doesn't jump straight in
 
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
@@ -401,6 +402,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousLeft = buildLuminousChannel(-1);
     luminousRight = buildLuminousChannel(1);
     luminousPhaseTime = 0;
+    luminousFadeInStart = Date.now();
     luminousNote.style.display = "block";
     updateLuminousModulation();
   }
@@ -429,8 +431,10 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // instead — skip the drift-based wander so the two don't fight over the
     // same parameter. Embedded-signal suppression overrides both.
     if(!state.luminousFollowMusic){
+      const fadeInSec = Math.max(0.1, luminousPrefs.fadeInSeconds);
+      const fadeInFactor = Math.min(1, (Date.now() - luminousFadeInStart) / (fadeInSec*1000));
       const wander = computeBrightnessWander(luminousPhaseTime, state.luminousBrightnessVar);
-      const target = luminousSuppressed ? 0 : Math.max(0.05, Math.min(1, LUMINOUS_BASE_STRENGTH + wander));
+      const target = luminousSuppressed ? 0 : Math.max(0.05, Math.min(1, LUMINOUS_BASE_STRENGTH + wander)) * fadeInFactor;
       luminousLeft.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
       luminousRight.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
     }
@@ -448,7 +452,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       return;
     }
     const level = getRms(ambientAnalyser);
-    const target = Math.max(0.05, Math.min(1, level * 4)); // ambient RMS is typically well under 1.0
+    const fadeInSec = Math.max(0.1, luminousPrefs.fadeInSeconds);
+    const fadeInFactor = Math.min(1, (Date.now() - luminousFadeInStart) / (fadeInSec*1000));
+    const target = Math.max(0.05, Math.min(1, level * 4)) * fadeInFactor; // ambient RMS is typically well under 1.0
     luminousLeft.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
     luminousRight.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
   }
@@ -496,22 +502,6 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     );
   });
 
-  luminousEyeDriftSlider.addEventListener("input", () => {
-    state.luminousEyeDrift = parseInt(luminousEyeDriftSlider.value, 10);
-    luminousEyeDriftVal.textContent = state.luminousEyeDrift;
-  });
-
-  luminousBrightnessVarSlider.addEventListener("input", () => {
-    state.luminousBrightnessVar = parseInt(luminousBrightnessVarSlider.value, 10);
-    luminousBrightnessVarVal.textContent = state.luminousBrightnessVar;
-  });
-
-  luminousFollowMusicSwitch.addEventListener("click", () => {
-    state.luminousFollowMusic = !state.luminousFollowMusic;
-    luminousFollowMusicSwitch.classList.toggle("on", state.luminousFollowMusic);
-    updateLuminousNote();
-  });
-
   // ---------- Screen Strobe: no external hardware, uses the phone's own
   // screen held against closed eyes. Reuses the exact same wander/mapping
   // math as the audio-based Luminous sync (via luminous-math.js), rendered
@@ -525,6 +515,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   const screenStrobeRotateHint = document.getElementById("screenStrobeRotateHint");
   const screenStrobeControls = document.getElementById("screenStrobeControls");
   const screenStrobeBrightness = document.getElementById("screenStrobeBrightness");
+  screenStrobeBrightness.value = luminousPrefs.screenBrightnessDefault;
 
   let screenStrobeRunning = false;
   let screenStrobeRafId = null;
@@ -618,7 +609,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
       const eyeOffset = computeEyeDriftOffset(phaseTime, state.luminousEyeDrift) * driftScale;
       const wander = computeBrightnessWander(phaseTime, state.luminousBrightnessVar);
-      const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling;
+      const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
+      const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling * fadeInFactor;
 
       const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
       const rightRate = Math.max(0.1, baseRate + eyeOffset/2);
@@ -1920,7 +1912,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     applyNoiseLevel();
     masterGain.gain.cancelScheduledValues(ctx.currentTime);
     masterGain.gain.setValueAtTime(0, ctx.currentTime);
-    masterGain.gain.linearRampToValueAtTime(1, ctx.currentTime + 2);
+    masterGain.gain.linearRampToValueAtTime(1, ctx.currentTime + Math.max(0.1, luminousPrefs.fadeInSeconds));
 
     sessionEndsAt = sessionMinutes > 0 ? Date.now() + sessionMinutes*60000 : null;
     state.wakeWindowMs = sessionMinutes > 0 ? Math.min(180000, sessionMinutes*60000*0.3) : 0;

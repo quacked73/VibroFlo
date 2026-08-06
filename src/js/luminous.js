@@ -1,17 +1,68 @@
-// Luminous — a standalone AudioStrobe test signal generator.
+// Luminous Settings — configures how light-sync behaves during real
+// sessions (persisted, read by session.js), plus a standalone AudioStrobe
+// test signal generator for pre-testing connected hardware directly.
 //
-// Deliberately separate from session.js's audio graph: this is a lab bench
-// for dialing in a real light-sync signal against actual hardware (starting
-// with a MindPlace Kasina), not yet a feature wired into regular sessions.
-// The technique is the same amplitude-gating already used for Isochronic
-// mode on the Session page's engines — an LFO gates a gain node — just aimed
-// at a carrier frequency above normal hearing instead of an audible tone.
+// The test signal below is deliberately separate from session.js's own
+// audio graph — a lab bench for dialing in a real light-sync signal against
+// actual hardware (starting with a MindPlace Kasina). The technique is the
+// same amplitude-gating already used for Isochronic mode on the Session
+// page's engines — an LFO gates a gain node — just aimed at a carrier
+// frequency above normal hearing instead of an audible tone.
 
 import { renderNav } from "./nav.js";
 import { logoSVG } from "./logo.js";
 import { showLuminousWarning } from "./luminous-safety.js";
+import { getLuminousPrefs, saveLuminousPrefs } from "./luminous-prefs.js";
 
 renderNav("luminous");
+
+// ---------- Live Session Behavior (persisted preferences) ----------
+const prefFadeIn = document.getElementById("prefFadeIn");
+const prefFadeInVal = document.getElementById("prefFadeInVal");
+const prefEyeDrift = document.getElementById("prefEyeDrift");
+const prefEyeDriftVal = document.getElementById("prefEyeDriftVal");
+const prefBrightnessVar = document.getElementById("prefBrightnessVar");
+const prefBrightnessVarVal = document.getElementById("prefBrightnessVarVal");
+const prefFollowMusicSwitch = document.getElementById("prefFollowMusicSwitch");
+const prefScreenBrightness = document.getElementById("prefScreenBrightness");
+const prefScreenBrightnessVal = document.getElementById("prefScreenBrightnessVal");
+
+(function initPrefsUI(){
+  const prefs = getLuminousPrefs();
+  prefFadeIn.value = prefs.fadeInSeconds;
+  prefFadeInVal.textContent = prefs.fadeInSeconds;
+  prefEyeDrift.value = prefs.eyeDrift;
+  prefEyeDriftVal.textContent = prefs.eyeDrift;
+  prefBrightnessVar.value = prefs.brightnessVar;
+  prefBrightnessVarVal.textContent = prefs.brightnessVar;
+  prefFollowMusicSwitch.classList.toggle("on", prefs.followMusic);
+  prefScreenBrightness.value = prefs.screenBrightnessDefault;
+  prefScreenBrightnessVal.textContent = prefs.screenBrightnessDefault;
+})();
+
+prefFadeIn.addEventListener("input", () => {
+  prefFadeInVal.textContent = prefFadeIn.value;
+  saveLuminousPrefs({ fadeInSeconds: parseInt(prefFadeIn.value, 10) });
+});
+prefEyeDrift.addEventListener("input", () => {
+  prefEyeDriftVal.textContent = prefEyeDrift.value;
+  saveLuminousPrefs({ eyeDrift: parseInt(prefEyeDrift.value, 10) });
+});
+prefBrightnessVar.addEventListener("input", () => {
+  prefBrightnessVarVal.textContent = prefBrightnessVar.value;
+  saveLuminousPrefs({ brightnessVar: parseInt(prefBrightnessVar.value, 10) });
+});
+prefFollowMusicSwitch.addEventListener("click", () => {
+  const next = !prefFollowMusicSwitch.classList.contains("on");
+  prefFollowMusicSwitch.classList.toggle("on", next);
+  saveLuminousPrefs({ followMusic: next });
+});
+prefScreenBrightness.addEventListener("input", () => {
+  prefScreenBrightnessVal.textContent = prefScreenBrightness.value;
+  saveLuminousPrefs({ screenBrightnessDefault: parseInt(prefScreenBrightness.value, 10) });
+});
+
+// ---------- Test Your Hardware (unchanged from before) ----------
 
 const powerBtn = document.getElementById("lumPowerBtn");
 const statusEl = document.getElementById("lumStatus");

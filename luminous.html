@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
-<title>VibroFlō — Luminous (Experimental)</title>
+<title>VibroFlō — Luminous Settings</title>
 <link rel="icon" type="image/svg+xml" href="/favicon.svg">
 <link rel="stylesheet" href="/src/styles/main.css">
 </head>
@@ -13,25 +13,58 @@
 
   <div class="console">
     <div class="hero-eyebrow">
-      <b style="color:var(--text); display:block; margin-bottom:4px; font-size:13px;">Luminous — experimental light-sync signal</b>
-      Early testbed, not yet part of regular sessions
+      <b style="color:var(--text); display:block; margin-bottom:4px; font-size:13px;">Luminous Settings</b>
+      Configure how light-sync behaves during real sessions, and test your connected hardware
     </div>
 
     <div class="section dim-target" style="border-top:none; padding-top:8px;">
-      <div class="section-title">What this is</div>
+      <div class="section-title">Live Session Behavior</div>
       <div class="callout">
-        Some light-and-sound machines — like the MindPlace Kasina — read a special tone
-        hidden above normal hearing range (around 19.2kHz) to flash their LEDs in sync
-        with audio. This is called <b>AudioStrobe</b>. This page generates that signal on
-        its own, separate from a regular session, so it can be tested against real
-        hardware before it's wired into the tone engines. Almost nobody can actually hear
-        this tone — but some phone speakers and cheap headphones don't reproduce
-        frequencies this high cleanly, which is exactly what this page is for figuring out.
+        These apply the next time you start a session with Luminous or Screen Mode turned on — on the
+        Session page itself, they stay out of the way as simple on/off toggles.
+      </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Fade-in duration<small>how gently Luminous eases in when a session starts — "meets you where you are" instead of jumping straight to full intensity</small></div>
+        <input type="range" id="prefFadeIn" min="0" max="30" step="1" value="10">
+        <div class="ctrl-value"><span id="prefFadeInVal">10</span>s</div>
+      </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Eye drift<small>lets left and right slowly wander out of sync and back, instead of flashing in rigid lockstep</small></div>
+        <input type="range" id="prefEyeDrift" min="0" max="100" step="1" value="40">
+        <div class="ctrl-value"><span id="prefEyeDriftVal">40</span>%</div>
+      </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Brightness variation<small>a subtle natural wander in intensity, so the light breathes rather than blinks at one fixed level</small></div>
+        <input type="range" id="prefBrightnessVar" min="0" max="100" step="1" value="30">
+        <div class="ctrl-value"><span id="prefBrightnessVarVal">30</span>%</div>
+      </div>
+
+      <div class="toggle-line">
+        <div class="ctrl-label">Follow Music by default<small>brightness tracks the ambient track's own volume instead of the drift wander above — only matters when a track is actually playing</small></div>
+        <div class="switch" id="prefFollowMusicSwitch"><div class="knob"></div></div>
+      </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Screen Mode default brightness<small>where the brightness slider starts during the countdown — still adjustable each time</small></div>
+        <input type="range" id="prefScreenBrightness" min="15" max="100" step="1" value="70">
+        <div class="ctrl-value"><span id="prefScreenBrightnessVal">70</span>%</div>
       </div>
     </div>
 
     <div class="section dim-target">
-      <div class="section-title">Signal</div>
+      <div class="section-title">Test Your Hardware</div>
+      <div class="callout">
+        Some light-and-sound machines — like the MindPlace Kasina — read a special tone
+        hidden above normal hearing range (around 19.2kHz) to flash their LEDs in sync
+        with audio. This is called <b>AudioStrobe</b>. Use this to test your connected hardware
+        directly, separate from a real session — useful for confirming your specific device and
+        cables actually reproduce this signal before relying on it live. Almost nobody can
+        actually hear this tone — but some phone speakers and cheap headphones don't reproduce
+        frequencies this high cleanly, which is exactly what this is for figuring out.
+      </div>
 
       <div class="ctrl-row">
         <div class="ctrl-label">Carrier frequency<small>19200Hz is the AudioStrobe standard — adjust only to test what your device can actually reproduce</small></div>
@@ -73,38 +106,28 @@
           <div class="pill" data-channel="right">Right only</div>
         </div>
       </div>
-    </div>
 
-    <div class="section transport">
-      <div style="display:flex; align-items:center; justify-content:space-between;">
-        <div>
-          <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Test signal</div>
-          <div class="callout" id="lumStatus" style="margin-top:8px; display:none;"></div>
+      <div class="section transport" style="margin-top:14px;">
+        <div style="display:flex; align-items:center; justify-content:space-between;">
+          <div>
+            <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Test signal</div>
+            <div class="callout" id="lumStatus" style="margin-top:8px; display:none;"></div>
+          </div>
+          <div class="power-btn" id="lumPowerBtn">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
         </div>
-        <div class="power-btn" id="lumPowerBtn">
-          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-            <line x1="12" y1="2" x2="12" y2="12"></line>
-          </svg>
-        </div>
-      </div>
-    </div>
-
-    <div class="section dim-target">
-      <div class="callout">
-        <b style="color:var(--text);">Not wired into regular sessions yet.</b> This runs entirely on its
-        own — starting it doesn't touch the Low/High engines on the Session page. Once
-        the signal's confirmed working reliably against real hardware, the next step is
-        syncing this pulse rate to whatever the Low engine's beat frequency is, so the
-        light and the felt vibration move together automatically.
       </div>
     </div>
   </div>
 
   <div class="footnote">
-    Experimental. Requires AudioStrobe/SpectraStrobe-compatible hardware to see any
-    effect — playing this on ordinary speakers or headphones does nothing visible, and
-    should be silent or near-silent to most people.
+    Live Session Behavior settings apply automatically on Session — no need to revisit them there.
+    The hardware test above requires AudioStrobe/SpectraStrobe-compatible hardware to see any
+    effect, and should be silent or near-silent to most people on ordinary speakers.
   </div>
 
 <script type="module" src="/src/js/luminous.js"></script>
