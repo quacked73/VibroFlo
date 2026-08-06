@@ -14,6 +14,7 @@ export function renderNav(activePage){
     <div class="site-nav-links">
       <a href="/index.html" data-page="index">Home</a>
       <a href="/session.html" data-page="session">Session</a>
+      <a href="/luminous.html" data-page="luminous">Luminous</a>
       <a href="/settings.html" data-page="settings">Settings</a>
       <a href="/about.html" data-page="about">About</a>
     </div>

@@ -18,6 +18,7 @@ export default defineConfig({
       input: {
         main: resolve(__dirname, "index.html"),
         session: resolve(__dirname, "session.html"),
+        luminous: resolve(__dirname, "luminous.html"),
         settings: resolve(__dirname, "settings.html"),
         about: resolve(__dirname, "about.html"),
       },
