@@ -9,6 +9,7 @@
 
 import { renderNav } from "./nav.js";
 import { logoSVG } from "./logo.js";
+import { showLuminousWarning } from "./luminous-safety.js";
 
 renderNav("luminous");
 
@@ -129,7 +130,10 @@ function updateStatus(){
     `${state.depth}% depth, ${state.shape === "sine" ? "smooth" : "sharp"} gate, ${state.channel} channel(s).`;
 }
 
-powerBtn.addEventListener("click", () => running ? stop() : start());
+powerBtn.addEventListener("click", () => {
+  if(running){ stop(); return; }
+  showLuminousWarning(() => start(), () => {});
+});
 
 freqSlider.addEventListener("input", () => {
   state.freq = parseInt(freqSlider.value, 10);
