@@ -10,6 +10,7 @@ import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
 import { renderNav } from "./nav.js";
 import { logoSVG } from "./logo.js";
 import { initTour } from "./tour.js";
+import { showLuminousWarning } from "./luminous-safety.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -430,10 +431,40 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // Called on Drift's own 150ms cadence (piggybacking driftTick, since this
   // needs the same "smooth continuous wander" cadence) and immediately on
   // any manual change — tab switch, band change, slider tweak.
+  const LUMINOUS_FLOOR = 7.84;  // Schumann resonance — below this, a flash reads as a slow blink, not a pulse
+  const LUMINOUS_CEILING = 50;  // matches Gamma's own ceiling in this app
+
+  // Delta and Theta run below the floor on their own. Rather than flash too
+  // slowly to feel coherent, step the rate up by a whole-number multiple
+  // until it lands inside the window — an octave-like relationship that
+  // stays mathematically tied to the real target state instead of picking
+  // an arbitrary number. Alpha/Beta/Gamma already sit inside the window, so
+  // they pass through unchanged.
+  function bestFitLuminousRate(engineRate){
+    if(engineRate >= LUMINOUS_FLOOR && engineRate <= LUMINOUS_CEILING) return engineRate;
+    if(engineRate < LUMINOUS_FLOOR){
+      let mult = Math.max(1, Math.ceil(LUMINOUS_FLOOR / engineRate));
+      let candidate = engineRate * mult;
+      while(candidate > LUMINOUS_CEILING && mult > 1){ mult--; candidate = engineRate * mult; }
+      return candidate >= LUMINOUS_FLOOR ? candidate : LUMINOUS_FLOOR;
+    }
+    let div = Math.max(1, Math.ceil(engineRate / LUMINOUS_CEILING));
+    return Math.max(LUMINOUS_FLOOR, Math.min(LUMINOUS_CEILING, engineRate / div));
+  }
+
+  // How much of the Eye Drift ceiling actually gets used — calm and unified
+  // for the slower, deeper bands; fuller and more dynamic for the faster,
+  // more alert ones. The Eye Drift slider stays the ceiling either way.
+  const BAND_DRIFT_SCALE = { delta: 0.2, theta: 0.4, alpha: 0.7, beta: 1, gamma: 1 };
+  function currentDriftScale(){
+    const band = state.engines[state.activeTab].currentBand;
+    return BAND_DRIFT_SCALE[band] !== undefined ? BAND_DRIFT_SCALE[band] : 1;
+  }
+
   function updateLuminousModulation(){
     if(!luminousLeft || !ctx) return;
-    const baseRate = Math.max(0.1, state.engines[state.activeTab].beatCurrent);
-    const eyeOffset = computeEyeDriftOffset();
+    const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
+    const eyeOffset = computeEyeDriftOffset() * currentDriftScale();
     luminousLeft.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate - eyeOffset/2), ctx.currentTime, 0.3);
     luminousRight.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate + eyeOffset/2), ctx.currentTime, 0.3);
 
@@ -479,17 +510,32 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       luminousNote.textContent = "Paused — the current track already has its own embedded light signal, so Luminous is staying quiet to avoid clashing with it.";
       return;
     }
-    const rate = state.engines[state.activeTab].beatCurrent;
+    const rawRate = state.engines[state.activeTab].beatCurrent;
+    const mappedRate = bestFitLuminousRate(Math.max(0.1, rawRate));
     const engineLabel = state.activeTab === "low" ? "Low" : "High";
+    const mappingNote = Math.abs(mappedRate - rawRate) > 0.05
+      ? ` (stepped up from the ${rawRate.toFixed(1)}Hz tone — too slow to read as a flash on its own)`
+      : "";
     const extra = state.luminousFollowMusic ? " Brightness is following the ambient track's volume." : "";
-    luminousNote.textContent = `Sending an inaudible signal at ${rate.toFixed(1)}Hz, matching the ${engineLabel} engine.${extra} Needs compatible hardware (like a MindPlace Kasina) to see anything.`;
+    luminousNote.textContent = `Sending an inaudible signal at ${mappedRate.toFixed(1)}Hz${mappingNote}, matching the ${engineLabel} engine.${extra} Needs compatible hardware (like a MindPlace Kasina) to see anything.`;
   }
 
   luminousSwitch.addEventListener("click", () => {
-    state.luminousOn = !state.luminousOn;
-    luminousSwitch.classList.toggle("on", state.luminousOn);
-    if(state.luminousOn && running) startLuminous();
-    else stopLuminous();
+    if(state.luminousOn){
+      // turning off needs no warning, just stop
+      state.luminousOn = false;
+      luminousSwitch.classList.remove("on");
+      stopLuminous();
+      return;
+    }
+    showLuminousWarning(
+      () => { // confirmed
+        state.luminousOn = true;
+        luminousSwitch.classList.add("on");
+        if(running) startLuminous();
+      },
+      () => { /* declined — leave the switch off, nothing else to do */ }
+    );
   });
 
   luminousEyeDriftSlider.addEventListener("input", () => {
