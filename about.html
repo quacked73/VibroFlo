@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>VibroFlō — About &amp; Support</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+  <div id="site-nav" class="site-nav"></div>
+
+  <div class="console">
+    <div id="brand-hero-root"></div>
+    <div class="hero-eyebrow"><b>About VibroFlō</b></div>
+
+    <div class="tab-row" style="padding-top:10px;">
+      <div class="pill active" data-tab="about">About</div>
+      <div class="pill" data-tab="support">Support</div>
+    </div>
+
+    <div id="panel-about" class="prose">
+      <h3>What is vibroacoustic therapy?</h3>
+      <p>Vibroacoustic therapy (VAT) uses low-frequency sound — typically somewhere in the 30–120Hz range — delivered through speakers or transducers built into a chair, mat, or table, so the sound is felt as physical vibration as much as it's heard. It grew out of work in the 1980s exploring how the body responds to low-frequency sound directly, rather than only through the ears, and it's since been used in relaxation, music therapy, and wellness settings.</p>
+
+      <h3>Binaural and isochronic tones</h3>
+      <p>A binaural beat happens when each ear hears a slightly different pure tone through headphones — your brain perceives the small difference between them as a third, slower rhythmic pulse that isn't actually present in either signal on its own. Isochronic tones create a similar rhythmic pulse more directly, by turning a single tone on and off at a steady rate, which is why they work over speakers where binaural beats need headphones. Both are forms of what's often called "brainwave entrainment" — the idea that a steady external rhythm can encourage the brain's own electrical rhythms to shift toward it.</p>
+
+      <h3>The mind-body connection</h3>
+      <p>Sound and vibration are widely used as part of relaxation practices, meditation, sleep routines, and body-based approaches to stress — the reasoning being that physical vibration, breath, and a steady auditory rhythm all feed into the same nervous-system pathways that regulate calm versus alertness. Research specifically on binaural beats and vibroacoustic therapy is still developing, with some studies showing promising results for relaxation and focus and others showing more mixed or inconclusive findings — so this is best thought of as a wellness and self-exploration tool, not a proven clinical treatment.</p>
+
+      <p>That's the spirit this app is built in: a flexible instrument for exploring tone, rhythm, and vibration, not a claim about what it will do for you.</p>
+
+      <div class="disclaimer">
+        This is not medical advice, and VibroFlō is not a medical device. If you have epilepsy, a pacemaker or other implanted medical device, are pregnant, or are managing any health condition, talk to a healthcare professional before using sound- or vibration-based sessions — including vibroacoustic tables — as part of your routine. Stop immediately if anything feels uncomfortable.
+      </div>
+    </div>
+
+    <div id="panel-support" class="prose" style="display:none;">
+      <h3>Frequently asked</h3>
+      <p><b style="color:var(--text);">Does this work offline?</b><br>Yes — once the page has loaded once, the whole engine runs locally in your browser. No internet connection is needed to run a session.</p>
+      <p><b style="color:var(--text);">Where is my data stored?</b><br>Locally, on your device, using your browser's IndexedDB storage. Presets and any audio files you add never leave your device.</p>
+      <p><b style="color:var(--text);">How do I add my own audio?</b><br>Head to <a href="/settings.html" style="color:var(--green);">Settings</a> and use "+ Add audio files" — they'll show up in the Ambient Layer on the Session page right away.</p>
+      <p><b style="color:var(--text);">I found a bug, or have a feature idea.</b><br>Open an issue on the GitHub repo, or reach out directly — see below.</p>
+
+      <h3>Contact</h3>
+      <ul>
+        <li>GitHub: open an issue on the VibroFlō repository</li>
+        <li>Email: <a href="mailto:hello@vibroflo.com" style="color:var(--green);">hello@vibroflo.com</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="footnote">
+    <span id="company-mark-root" style="vertical-align:middle; display:inline-flex; margin-right:4px;"></span>
+    VibroFlō — built for exploring tone, rhythm, and vibration. A VibroSomatics product.
+  </div>
+
+<script type="module" src="/src/js/about.js"></script>
+</body>
+</html>
