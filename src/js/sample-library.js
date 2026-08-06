@@ -37,6 +37,7 @@ export async function getBundledTracks(){
     source: "bundled",
     file: entry.file,
     buffer: null,
+    hasEmbeddedLight: !!entry.hasEmbeddedLight,
   }));
 }
 

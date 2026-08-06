@@ -13,7 +13,7 @@ import { getBundledTracks } from "./sample-library.js";
 import { isSignedIn, fetchServerTracks, uploadServerTrack, deleteServerTrack, fetchServerTrackAudio } from "./account.js";
 
 // Returns the full library: bundled samples first, then anything the user
-// has added. Each entry: { id, name, source: "bundled"|"user", blob?, buffer:null, synced? }
+// has added. Each entry: { id, name, source: "bundled"|"user", blob?, buffer:null, synced?, hasEmbeddedLight? }
 export async function loadTrackList(){
   const bundled = await getBundledTracks();
 
@@ -22,6 +22,7 @@ export async function loadTrackList(){
     if(serverTracks){
       const userTracks = serverTracks.map(rec => ({
         id: rec.id, name: rec.name, buffer: null, source: "user", synced: true,
+        hasEmbeddedLight: !!rec.hasEmbeddedLight,
       }));
       return bundled.concat(userTracks);
     }
@@ -31,21 +32,22 @@ export async function loadTrackList(){
   const userRecords = await dbGetAll("ambientTracks");
   const userTracks = userRecords.map(rec => ({
     id: rec.id, name: rec.name, blob: rec.blob, buffer: null, source: "user", synced: false,
+    hasEmbeddedLight: !!rec.hasEmbeddedLight,
   }));
   return bundled.concat(userTracks);
 }
 
-export async function addUserFile(file){
+export async function addUserFile(file, hasEmbeddedLight){
   if(await isSignedIn()){
     const result = await uploadServerTrack(file);
     if(result){
-      return { id: result.id, name: result.name, buffer: null, source: "user", synced: true };
+      return { id: result.id, name: result.name, buffer: null, source: "user", synced: true, hasEmbeddedLight: !!hasEmbeddedLight };
     }
     // upload failed — fall through to local so the file isn't just lost
   }
   const id = makeId();
-  await dbPut("ambientTracks", { id, name: file.name, blob: file });
-  return { id, name: file.name, blob: file, buffer: null, source: "user", synced: false };
+  await dbPut("ambientTracks", { id, name: file.name, blob: file, hasEmbeddedLight: !!hasEmbeddedLight });
+  return { id, name: file.name, blob: file, buffer: null, source: "user", synced: false, hasEmbeddedLight: !!hasEmbeddedLight };
 }
 
 export async function removeUserTrack(id, synced){

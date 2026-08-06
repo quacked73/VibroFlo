@@ -247,6 +247,24 @@
         <div class="ctrl-label">Luminous sync<small>sends an inaudible AudioStrobe signal, matching the pace of whichever engine is currently active — for compatible light-and-sound hardware like a MindPlace Kasina</small></div>
         <div class="switch" id="luminousSwitch"><div class="knob"></div></div>
       </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Eye drift<small>lets left and right slowly wander out of sync and back, instead of flashing in rigid lockstep</small></div>
+        <input type="range" id="luminousEyeDrift" min="0" max="100" step="1" value="40">
+        <div class="ctrl-value"><span id="luminousEyeDriftVal">40</span>%</div>
+      </div>
+
+      <div class="ctrl-row">
+        <div class="ctrl-label">Brightness variation<small>a subtle natural wander in intensity, so the light breathes rather than blinks at one fixed level</small></div>
+        <input type="range" id="luminousBrightnessVar" min="0" max="100" step="1" value="30">
+        <div class="ctrl-value"><span id="luminousBrightnessVarVal">30</span>%</div>
+      </div>
+
+      <div class="toggle-line">
+        <div class="ctrl-label">Follow Music<small>brightness tracks the ambient track's own volume in real time instead of the drift wander above — needs a track actually playing to do anything</small></div>
+        <div class="switch" id="luminousFollowMusicSwitch"><div class="knob"></div></div>
+      </div>
+
       <div class="callout" id="luminousNote" style="display:none; margin-top:10px;"></div>
     </div>
 

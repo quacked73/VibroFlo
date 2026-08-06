@@ -68,6 +68,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     activeTab: "low",
     combineOn: false,
     luminousOn: false,
+    luminousEyeDrift: 40,
+    luminousBrightnessVar: 30,
+    luminousFollowMusic: false,
     driftOn: false,
     driftDepth: 1,
     driftRate: 1.5,
@@ -113,7 +116,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     e.beatCurrent = e.beatBase;
     els[key].beatVal.textContent = e.beatBase.toFixed(1);
     applyEngineFrequencies(key);
-    updateLuminousRate();
+    updateLuminousModulation();
   }
 
   ENGINE_KEYS.forEach(key => {
@@ -170,7 +173,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     state.activeTab = pill.dataset.tab;
     updatePanelVisibility();
     updateEngineGains();
-    updateLuminousRate();
+    updateLuminousModulation();
   });
   combineSwitch.addEventListener("click", () => {
     state.combineOn = !state.combineOn;
@@ -327,14 +330,25 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
 
   // ---------- Luminous sync: optional AudioStrobe-compatible light signal ----------
   // Same technique proven out on the standalone Luminous test page — an LFO
-  // gates a high-frequency carrier's amplitude. The rate isn't a separate
-  // control here, though: it continuously tracks whichever engine's beat
-  // frequency is currently active, so it inherits Drift's wander and any
-  // Session Arc glide automatically, without needing its own logic for either.
+  // gates a high-frequency carrier's amplitude. The base rate continuously
+  // tracks whichever engine's beat frequency is currently active, so it
+  // inherits Drift's wander and any Session Arc glide automatically. Eye
+  // Drift and Brightness Variation reuse the exact same smooth two-sine-wave
+  // wander technique Variability Drift already uses on the tone engines,
+  // just aimed at new targets (the left/right rate difference, and overall
+  // brightness) with their own independent timebase and phase constants.
   const luminousSwitch = document.getElementById("luminousSwitch");
   const luminousNote = document.getElementById("luminousNote");
+  const luminousEyeDriftSlider = document.getElementById("luminousEyeDrift");
+  const luminousEyeDriftVal = document.getElementById("luminousEyeDriftVal");
+  const luminousBrightnessVarSlider = document.getElementById("luminousBrightnessVar");
+  const luminousBrightnessVarVal = document.getElementById("luminousBrightnessVarVal");
+  const luminousFollowMusicSwitch = document.getElementById("luminousFollowMusicSwitch");
   const LUMINOUS_FREQ = 19200;
+  const LUMINOUS_BASE_STRENGTH = 0.8;
   let luminousLeft = null, luminousRight = null;
+  let luminousPhaseTime = 0; // independent of driftPhaseTime, so it doesn't move in lockstep with tone drift
+  let luminousSuppressed = false; // true while the current ambient track already has its own embedded light signal
 
   function buildLuminousChannel(pan){
     const carrier = ctx.createOscillator();
@@ -358,7 +372,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     lfoOffset.connect(gate.gain);
 
     const strength = ctx.createGain();
-    strength.gain.value = 0.8;
+    strength.gain.value = LUMINOUS_BASE_STRENGTH;
 
     const panner = ctx.createStereoPanner();
     panner.pan.value = pan;
@@ -383,8 +397,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(!ctx || luminousLeft) return;
     luminousLeft = buildLuminousChannel(-1);
     luminousRight = buildLuminousChannel(1);
+    luminousPhaseTime = 0;
     luminousNote.style.display = "block";
-    updateLuminousNote();
+    updateLuminousModulation();
   }
 
   function stopLuminous(){
@@ -394,22 +409,80 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousNote.style.display = "none";
   }
 
-  // Called whenever the active engine's beat frequency moves for ANY reason —
-  // manual slider, Drift's wander, or a Session Arc's glide — so the light
-  // always matches without needing to know which of those caused the change.
-  function updateLuminousRate(){
+  // A slow, smooth, deterministic wander — same shape as Variability Drift's
+  // tone wander, different rates/phase so the two never move in sync with
+  // each other. Returns a small Hz offset applied opposite-signed to each eye.
+  function computeEyeDriftOffset(){
+    if(!state.luminousEyeDrift) return 0;
+    const depth = (state.luminousEyeDrift/100) * 0.6; // up to ~0.6Hz apart at 100%
+    return depth * (0.6*Math.sin(2*Math.PI*0.05*luminousPhaseTime) +
+                     0.4*Math.sin(2*Math.PI*0.083*luminousPhaseTime + 2.1));
+  }
+
+  // Same technique again, aimed at brightness instead of rate.
+  function computeBrightnessWander(){
+    if(!state.luminousBrightnessVar) return 0;
+    const depth = (state.luminousBrightnessVar/100) * 0.35;
+    return depth * (0.5*Math.sin(2*Math.PI*0.037*luminousPhaseTime + 0.7) +
+                     0.5*Math.sin(2*Math.PI*0.061*luminousPhaseTime + 3.4));
+  }
+
+  // Called on Drift's own 150ms cadence (piggybacking driftTick, since this
+  // needs the same "smooth continuous wander" cadence) and immediately on
+  // any manual change — tab switch, band change, slider tweak.
+  function updateLuminousModulation(){
     if(!luminousLeft || !ctx) return;
-    const rate = Math.max(0.1, state.engines[state.activeTab].beatCurrent);
-    luminousLeft.lfo.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
-    luminousRight.lfo.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
+    const baseRate = Math.max(0.1, state.engines[state.activeTab].beatCurrent);
+    const eyeOffset = computeEyeDriftOffset();
+    luminousLeft.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate - eyeOffset/2), ctx.currentTime, 0.3);
+    luminousRight.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate + eyeOffset/2), ctx.currentTime, 0.3);
+
+    // Follow Music (if on) drives strength continuously from the rAF loop
+    // instead — skip the drift-based wander so the two don't fight over the
+    // same parameter. Embedded-signal suppression overrides both.
+    if(!state.luminousFollowMusic){
+      const target = luminousSuppressed ? 0 : Math.max(0.05, Math.min(1, LUMINOUS_BASE_STRENGTH + computeBrightnessWander()));
+      luminousLeft.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
+      luminousRight.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
+    }
     updateLuminousNote();
+  }
+
+  // Real-time brightness-follows-music — reads the ambient bus's actual
+  // loudness every animation frame, same technique already driving the
+  // visualizer's breathing orbs, just pointed at a new destination.
+  function updateLuminousFollowMusic(){
+    if(!state.luminousFollowMusic || !luminousLeft || !ctx || !ambientAnalyser) return;
+    if(luminousSuppressed){
+      luminousLeft.strength.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+      luminousRight.strength.gain.setTargetAtTime(0, ctx.currentTime, 0.1);
+      return;
+    }
+    const level = getRms(ambientAnalyser);
+    const target = Math.max(0.05, Math.min(1, level * 4)); // ambient RMS is typically well under 1.0
+    luminousLeft.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
+    luminousRight.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.08);
+  }
+
+  // Called whenever a new ambient track starts, so Luminous automatically
+  // goes quiet for anything tagged as already having its own embedded
+  // signal — two overlapping signals in that band would just garble each
+  // other at the decoder.
+  function setLuminousSuppressed(suppressed){
+    luminousSuppressed = suppressed;
+    updateLuminousModulation();
   }
 
   function updateLuminousNote(){
     if(!luminousLeft) return;
+    if(luminousSuppressed){
+      luminousNote.textContent = "Paused — the current track already has its own embedded light signal, so Luminous is staying quiet to avoid clashing with it.";
+      return;
+    }
     const rate = state.engines[state.activeTab].beatCurrent;
     const engineLabel = state.activeTab === "low" ? "Low" : "High";
-    luminousNote.textContent = `Sending an inaudible signal at ${rate.toFixed(1)}Hz, matching the ${engineLabel} engine. Needs compatible hardware (like a MindPlace Kasina) to see anything.`;
+    const extra = state.luminousFollowMusic ? " Brightness is following the ambient track's volume." : "";
+    luminousNote.textContent = `Sending an inaudible signal at ${rate.toFixed(1)}Hz, matching the ${engineLabel} engine.${extra} Needs compatible hardware (like a MindPlace Kasina) to see anything.`;
   }
 
   luminousSwitch.addEventListener("click", () => {
@@ -417,6 +490,22 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousSwitch.classList.toggle("on", state.luminousOn);
     if(state.luminousOn && running) startLuminous();
     else stopLuminous();
+  });
+
+  luminousEyeDriftSlider.addEventListener("input", () => {
+    state.luminousEyeDrift = parseInt(luminousEyeDriftSlider.value, 10);
+    luminousEyeDriftVal.textContent = state.luminousEyeDrift;
+  });
+
+  luminousBrightnessVarSlider.addEventListener("input", () => {
+    state.luminousBrightnessVar = parseInt(luminousBrightnessVarSlider.value, 10);
+    luminousBrightnessVarVal.textContent = state.luminousBrightnessVar;
+  });
+
+  luminousFollowMusicSwitch.addEventListener("click", () => {
+    state.luminousFollowMusic = !state.luminousFollowMusic;
+    luminousFollowMusicSwitch.classList.toggle("on", state.luminousFollowMusic);
+    updateLuminousNote();
   });
 
   // ---------- Timer ----------
@@ -487,7 +576,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   let emdrSide = -1;
   let emdrNextHitTime = 0;
 
-  let ambientGain = null, ambientHighpass = null;
+  let ambientGain = null, ambientHighpass = null, ambientAnalyser = null;
   let ambientSource = null, ambientTrackGain = null;
   let ambientPlaying = false;
   state.ambientTracks = [];      // {name, buffer}
@@ -589,6 +678,12 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     ambientGain.gain.value = state.ambientVolume / 100;
     ambientHighpass.connect(ambientGain);
     ambientGain.connect(masterGain);
+
+    // A parallel tap (not part of the output path) so Luminous's Follow
+    // Music mode can read the ambient track's live loudness.
+    ambientAnalyser = ctx.createAnalyser();
+    ambientAnalyser.fftSize = 1024;
+    ambientGain.connect(ambientAnalyser);
 
     // Breath sound: two continuously-looping filtered noise sources, silent by
     // default, swelled up and down by the breath-phase envelope in drawScope.
@@ -868,6 +963,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       ambientTrackGain = null;
     }
     ambientPlaying = false;
+    setLuminousSuppressed(false);
   }
 
   // Shared by playback and by the queue (which needs a track's real duration
@@ -993,6 +1089,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(!ctx || !state.ambientTracks.length) return;
     const track = state.ambientTracks[index];
     if(!track) return;
+
+    setLuminousSuppressed(!!track.hasEmbeddedLight);
 
     await decodeTrackIfNeeded(track);
     if(!track.buffer) return;
@@ -1442,6 +1540,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   function driftTick(){
     if(!running){ driftTimerId = null; return; }
     driftPhaseTime += SCHED_WAKE_MS/1000;
+    luminousPhaseTime += SCHED_WAKE_MS/1000;
 
     let sharedWander = 0;
     if(state.driftOn){
@@ -1480,7 +1579,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         }
       });
     }
-    updateLuminousRate();
+    updateLuminousModulation();
     driftTimerId = setTimeout(driftTick, SCHED_WAKE_MS);
   }
 
@@ -1580,6 +1679,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
 
   function drawScope(){
     requestAnimationFrame(drawScope);
+    updateLuminousFollowMusic();
     const w = canvas.width, h = canvas.height;
 
     // soft violet wash background

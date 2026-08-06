@@ -5,6 +5,13 @@ renderNav("settings");
 
 const fileInput = document.getElementById("settingsFileInput");
 const libraryList = document.getElementById("libraryList");
+const embeddedLightSwitch = document.getElementById("embeddedLightSwitch");
+let embeddedLightChecked = false;
+
+embeddedLightSwitch.addEventListener("click", () => {
+  embeddedLightChecked = !embeddedLightChecked;
+  embeddedLightSwitch.classList.toggle("on", embeddedLightChecked);
+});
 
 let tracks = [];
 
@@ -21,7 +28,7 @@ function render(){
 
     const name = document.createElement("span");
     name.className = "track-name";
-    name.textContent = track.name;
+    name.textContent = track.name + (track.hasEmbeddedLight ? " 💡" : "");
 
     const actions = document.createElement("span");
     actions.style.display = "flex";
@@ -61,9 +68,11 @@ fileInput.addEventListener("change", async (e) => {
   const files = [...e.target.files];
   if(!files.length) return;
   for(const file of files){
-    await addUserFile(file);
+    await addUserFile(file, embeddedLightChecked);
   }
   fileInput.value = "";
+  embeddedLightChecked = false;
+  embeddedLightSwitch.classList.remove("on");
   await refresh();
 });
 
