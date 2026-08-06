@@ -13,6 +13,7 @@ const TOUR_ITEMS = [
   { title: "High Engine", desc: "Higher tones in the classic \"binaural beat\" range you may have heard of. Needs headphones to work as intended." },
   { title: "Variability Drift", desc: "Adds a subtle, natural wander to the tone so it doesn't feel robotic or locked rigidly in place." },
   { title: "EMDR Bilateral Pan", desc: "An alternating left-right sound some people use to help process stressful or anxious thoughts, inspired by a talk-therapy technique of the same name. Entirely optional — leave it off if you just want the tones." },
+  { title: "Luminous Sync", desc: "An inaudible signal for compatible light-and-sound hardware, matching the pace of whichever engine is active. Does nothing without that hardware connected." },
   { title: "Masking Bed", desc: "Soft background noise to cover the tone in shared or open spaces, if you'd rather it not be noticeable to people nearby." },
   { title: "Ambient Layer", desc: "Real recordings — waves, birds, and more — you can layer underneath the tone work, or queue up as its own thing." },
   { title: "Session Length", desc: "Set how long this runs and how it should end — a gentle fade out, or a slow fade up if you're using this to wake." },

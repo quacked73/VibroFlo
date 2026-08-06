@@ -67,6 +67,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     },
     activeTab: "low",
     combineOn: false,
+    luminousOn: false,
     driftOn: false,
     driftDepth: 1,
     driftRate: 1.5,
@@ -112,6 +113,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     e.beatCurrent = e.beatBase;
     els[key].beatVal.textContent = e.beatBase.toFixed(1);
     applyEngineFrequencies(key);
+    updateLuminousRate();
   }
 
   ENGINE_KEYS.forEach(key => {
@@ -168,6 +170,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     state.activeTab = pill.dataset.tab;
     updatePanelVisibility();
     updateEngineGains();
+    updateLuminousRate();
   });
   combineSwitch.addEventListener("click", () => {
     state.combineOn = !state.combineOn;
@@ -320,6 +323,100 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     state.emdrReverbDepth = parseFloat(emdrReverbSlider.value);
     emdrReverbVal.textContent = state.emdrReverbDepth.toFixed(0);
     if(emdrSendBus && ctx) emdrSendBus.gain.setTargetAtTime((state.emdrReverbDepth/100) * 0.85, ctx.currentTime, 0.05);
+  });
+
+  // ---------- Luminous sync: optional AudioStrobe-compatible light signal ----------
+  // Same technique proven out on the standalone Luminous test page — an LFO
+  // gates a high-frequency carrier's amplitude. The rate isn't a separate
+  // control here, though: it continuously tracks whichever engine's beat
+  // frequency is currently active, so it inherits Drift's wander and any
+  // Session Arc glide automatically, without needing its own logic for either.
+  const luminousSwitch = document.getElementById("luminousSwitch");
+  const luminousNote = document.getElementById("luminousNote");
+  const LUMINOUS_FREQ = 19200;
+  let luminousLeft = null, luminousRight = null;
+
+  function buildLuminousChannel(pan){
+    const carrier = ctx.createOscillator();
+    carrier.type = "sine";
+    carrier.frequency.value = LUMINOUS_FREQ;
+
+    const gate = ctx.createGain();
+    gate.gain.value = 0; // baseline comes entirely from lfoOffset — must stay 0 or it double-counts
+
+    const lfo = ctx.createOscillator();
+    lfo.type = "sine";
+    lfo.frequency.value = Math.max(0.1, state.engines[state.activeTab].beatCurrent);
+
+    const lfoDepth = ctx.createGain();
+    lfoDepth.gain.value = 0.5; // full-depth flash: gate swings between 0 and 1
+    const lfoOffset = ctx.createConstantSource();
+    lfoOffset.offset.value = 0.5;
+
+    lfo.connect(lfoDepth);
+    lfoDepth.connect(gate.gain);
+    lfoOffset.connect(gate.gain);
+
+    const strength = ctx.createGain();
+    strength.gain.value = 0.8;
+
+    const panner = ctx.createStereoPanner();
+    panner.pan.value = pan;
+
+    carrier.connect(gate);
+    gate.connect(strength);
+    strength.connect(panner);
+    panner.connect(ctx.destination);
+
+    carrier.start(); lfo.start(); lfoOffset.start();
+    return { carrier, gate, lfo, lfoDepth, lfoOffset, strength, panner };
+  }
+
+  function stopLuminousChannel(chain){
+    if(!chain) return;
+    try{ chain.carrier.stop(); }catch(e){}
+    try{ chain.lfo.stop(); }catch(e){}
+    try{ chain.lfoOffset.stop(); }catch(e){}
+  }
+
+  function startLuminous(){
+    if(!ctx || luminousLeft) return;
+    luminousLeft = buildLuminousChannel(-1);
+    luminousRight = buildLuminousChannel(1);
+    luminousNote.style.display = "block";
+    updateLuminousNote();
+  }
+
+  function stopLuminous(){
+    stopLuminousChannel(luminousLeft);
+    stopLuminousChannel(luminousRight);
+    luminousLeft = null; luminousRight = null;
+    luminousNote.style.display = "none";
+  }
+
+  // Called whenever the active engine's beat frequency moves for ANY reason —
+  // manual slider, Drift's wander, or a Session Arc's glide — so the light
+  // always matches without needing to know which of those caused the change.
+  function updateLuminousRate(){
+    if(!luminousLeft || !ctx) return;
+    const rate = Math.max(0.1, state.engines[state.activeTab].beatCurrent);
+    luminousLeft.lfo.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
+    luminousRight.lfo.frequency.setTargetAtTime(rate, ctx.currentTime, 0.1);
+    updateLuminousNote();
+  }
+
+  function updateLuminousNote(){
+    if(!luminousLeft) return;
+    const rate = state.engines[state.activeTab].beatCurrent;
+    const engineLabel = state.activeTab === "low" ? "Low" : "High";
+    luminousNote.textContent = `Sending an inaudible signal at ${rate.toFixed(1)}Hz, matching the ${engineLabel} engine. Needs compatible hardware (like a MindPlace Kasina) to see anything.`;
+  }
+
+  luminousSwitch.addEventListener("click", () => {
+    state.luminousOn = !state.luminousOn;
+    luminousSwitch.classList.toggle("on", state.luminousOn);
+    if(state.luminousOn && running) startLuminous();
+    else stopLuminous();
   });
 
   // ---------- Timer ----------
@@ -1383,6 +1480,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         }
       });
     }
+    updateLuminousRate();
     driftTimerId = setTimeout(driftTick, SCHED_WAKE_MS);
   }
 
@@ -1610,6 +1708,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       armNextEmdrHit();
       emdrScheduler();
     }
+    if(state.luminousOn) startLuminous();
     if(!ambientPlaying){
       if(state.ambientQueue.length){
         playQueueFromStart(false);
@@ -1720,6 +1819,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(rafId) cancelAnimationFrame(rafId);
     if(emdrTimerId){ clearTimeout(emdrTimerId); emdrTimerId = null; }
     if(driftTimerId){ clearTimeout(driftTimerId); driftTimerId = null; }
+    stopLuminous();
     stopAmbientSource();
     ambientNowPlaying.style.display = "none";
     renderAmbientTrackList();
