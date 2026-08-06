@@ -7,7 +7,7 @@ import { BANDS, ARCS, BREATH_PATTERNS, ENGINE_KEYS, SOLFEGGIO_TONES } from "./co
 import { dbGet, dbPut, dbGetAll, makeId } from "./db.js";
 import { decodeBundledTrack } from "./sample-library.js";
 import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
-import { renderNav } from "./nav.js";
+import { renderNav, setNavBackgroundMode } from "./nav.js";
 import { logoSVG } from "./logo.js";
 import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
@@ -516,6 +516,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   const screenStrobeControls = document.getElementById("screenStrobeControls");
   const screenStrobeBrightness = document.getElementById("screenStrobeBrightness");
   screenStrobeBrightness.value = luminousPrefs.screenBrightnessDefault;
+  const screenStrobeConfirm = document.getElementById("screenStrobeConfirm");
+  const screenStrobeConfirmStop = document.getElementById("screenStrobeConfirmStop");
+  const screenStrobeConfirmContinue = document.getElementById("screenStrobeConfirmContinue");
 
   let screenStrobeRunning = false;
   let screenStrobeRafId = null;
@@ -570,8 +573,12 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // Registered here, not just once the flicker begins, so tapping out
     // during the countdown itself works too — the main session's Stop
     // button is covered by this overlay the moment it appears, so this is
-    // the only way out until the whole thing ends on its own.
-    screenStrobeOverlay.addEventListener("click", stopScreenStrobe, { once: true });
+    // the only way out until the whole thing ends on its own. During the
+    // countdown a tap stops immediately (nothing disruptive is happening
+    // yet); once the actual flicker has started, a tap pauses and asks for
+    // confirmation instead, so one accidental brush doesn't end the whole
+    // thing.
+    screenStrobeOverlay.addEventListener("click", handleScreenStrobeOverlayTap);
 
     let count = 6;
     screenStrobeCountdownNum.textContent = count;
@@ -588,6 +595,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     }, 1000);
   }
 
+  let screenStrobePaused = false; // true while the "Stop Luminous?" prompt is showing
+  let screenStrobeConfirmTimer = null;
+
   function beginScreenStrobeFlicker(){
     screenStrobeControls.style.display = "none";
     screenStrobeRunning = true;
@@ -600,38 +610,88 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const durationMs = (sessionMinutes > 0 ? Math.min(sessionMinutes, 20) : 20) * 60000;
     screenStrobeStopTimer = setTimeout(stopScreenStrobe, durationMs);
 
-    const loop = (now) => {
-      if(!screenStrobeRunning) return;
-      const phaseTime = (now - screenStrobePhaseStart) / 1000;
-      const brightnessCeiling = parseInt(screenStrobeBrightness.value, 10) / 100;
-
-      const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
-      const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
-      const eyeOffset = computeEyeDriftOffset(phaseTime, state.luminousEyeDrift) * driftScale;
-      const wander = computeBrightnessWander(phaseTime, state.luminousBrightnessVar);
-      const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
-      const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling * fadeInFactor;
-
-      const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
-      const rightRate = Math.max(0.1, baseRate + eyeOffset/2);
-      // Square-ish flash: a raised sine, sharper than the audio version's
-      // smooth gate, since a screen flash reads better as a distinct pulse.
-      const leftPhase = (Math.sin(2*Math.PI*leftRate*phaseTime) + 1) / 2;
-      const rightPhase = (Math.sin(2*Math.PI*rightRate*phaseTime) + 1) / 2;
-
-      screenStrobeLeft.style.opacity = (leftPhase * brightness).toFixed(3);
-      screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
-
-      screenStrobeRafId = requestAnimationFrame(loop);
-    };
-    screenStrobeRafId = requestAnimationFrame(loop);
+    screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
   }
+
+  // Hoisted to module scope (not a closure inside beginScreenStrobeFlicker)
+  // specifically so resumeScreenStrobeFlicker() can restart the exact same
+  // loop after a pause, not just the very first start.
+  function screenStrobeLoop(now){
+    if(!screenStrobeRunning) return;
+    const phaseTime = (now - screenStrobePhaseStart) / 1000;
+    const brightnessCeiling = parseInt(screenStrobeBrightness.value, 10) / 100;
+
+    const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
+    const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
+    const eyeOffset = computeEyeDriftOffset(phaseTime, state.luminousEyeDrift) * driftScale;
+    const wander = computeBrightnessWander(phaseTime, state.luminousBrightnessVar);
+    const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
+    const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling * fadeInFactor;
+
+    const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
+    const rightRate = Math.max(0.1, baseRate + eyeOffset/2);
+    // Square-ish flash: a raised sine, sharper than the audio version's
+    // smooth gate, since a screen flash reads better as a distinct pulse.
+    const leftPhase = (Math.sin(2*Math.PI*leftRate*phaseTime) + 1) / 2;
+    const rightPhase = (Math.sin(2*Math.PI*rightRate*phaseTime) + 1) / 2;
+
+    screenStrobeLeft.style.opacity = (leftPhase * brightness).toFixed(3);
+    screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
+
+    screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
+  }
+
+  // A single accidental brush shouldn't end the whole thing — pause instead,
+  // show a small, calm prompt, and auto-resume if nobody actually confirms.
+  // Phase math (screenStrobePhaseStart) is left untouched by the pause, so
+  // resuming just continues exactly where it would have been anyway.
+  function pauseAndConfirmScreenStrobeStop(){
+    if(screenStrobePaused) return;
+    screenStrobePaused = true;
+    if(screenStrobeRafId){ cancelAnimationFrame(screenStrobeRafId); screenStrobeRafId = null; }
+    screenStrobeLeft.style.opacity = 0;
+    screenStrobeRight.style.opacity = 0;
+    screenStrobeConfirm.style.display = "flex";
+    screenStrobeConfirmTimer = setTimeout(resumeScreenStrobeFlicker, 5000);
+  }
+
+  function resumeScreenStrobeFlicker(){
+    if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
+    screenStrobeConfirm.style.display = "none";
+    screenStrobePaused = false;
+    if(screenStrobeRunning) screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
+  }
+
+  function handleScreenStrobeOverlayTap(){
+    if(screenStrobePaused) return; // prompt is already up — only its own buttons matter now
+    if(!screenStrobeRunning){
+      stopScreenStrobe(); // still in the countdown — nothing disruptive happening yet, stop immediately
+    } else {
+      pauseAndConfirmScreenStrobeStop();
+    }
+  }
+
+  screenStrobeConfirmStop.addEventListener("click", (e) => {
+    e.stopPropagation();
+    if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
+    screenStrobeConfirm.style.display = "none";
+    screenStrobePaused = false;
+    stopScreenStrobe();
+  });
+
+  screenStrobeConfirmContinue.addEventListener("click", (e) => {
+    e.stopPropagation();
+    resumeScreenStrobeFlicker();
+  });
 
   async function stopScreenStrobe(){
     screenStrobeRunning = false;
     if(screenStrobeRafId) cancelAnimationFrame(screenStrobeRafId);
     if(screenStrobeStopTimer) clearTimeout(screenStrobeStopTimer);
     if(screenStrobeCountdownTimer){ clearInterval(screenStrobeCountdownTimer); screenStrobeCountdownTimer = null; }
+    if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
+    screenStrobePaused = false;
+    screenStrobeConfirm.style.display = "none";
     screenStrobeOverlay.style.display = "none";
     screenStrobeControls.style.display = "block";
     try{ wakeLockRef?.release(); }catch(e){}
@@ -1906,6 +1966,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     running = true;
     fadingOut = false;
     driftPhaseTime = 0;
+    setNavBackgroundMode(true, "session");
+    document.getElementById("backgroundModeNote").style.display = "block";
     ENGINE_KEYS.forEach(key => { applyEngineFrequencies(key); applyEngineMix(key); });
     updateEngineGains();
     applyNoiseType();
@@ -2035,6 +2097,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(!running) return;
     running = false;
     fadingOut = false;
+    setNavBackgroundMode(false, "session");
+    document.getElementById("backgroundModeNote").style.display = "none";
     if(ctx){
       masterGain.gain.cancelScheduledValues(ctx.currentTime);
       masterGain.gain.setValueAtTime(masterGain.gain.value, ctx.currentTime);

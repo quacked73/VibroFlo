@@ -23,3 +23,18 @@ export function renderNav(activePage){
     if(a.dataset.page === activePage) a.classList.add("active");
   });
 }
+
+// Navigating to another page is a real page load — it tears down whatever's
+// currently running (the whole audio engine included), not just the visible
+// UI. While a session is active, this makes every *other* nav link open in
+// a new tab instead, so the running session just keeps going untouched
+// rather than getting silently killed by a normal click.
+export function setNavBackgroundMode(active, currentPage){
+  const root = document.getElementById("site-nav");
+  if(!root) return;
+  root.querySelectorAll("[data-page]").forEach(a => {
+    if(a.dataset.page === currentPage) return; // the current page's own link never needs this
+    if(active) a.setAttribute("target", "_blank");
+    else a.removeAttribute("target");
+  });
+}

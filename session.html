@@ -26,6 +26,10 @@
       </div>
     </header>
 
+    <div class="callout" id="backgroundModeNote" style="display:none; margin:0 24px 14px; font-size:11px;">
+      Session running — other nav links now open in a new tab so this keeps going.
+    </div>
+
     <div class="scope-wrap" id="scopeWrap">
       <div class="scope-frame">
         <button class="scope-maximize-btn" id="scopeMaximizeBtn" title="Maximize">⤢</button>
@@ -385,6 +389,13 @@
       <div style="color:#fff; font-family:var(--sans); font-size:12px; margin-bottom:8px; text-align:center;">Brightness</div>
       <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">
       <div style="color:rgba(255,255,255,0.6); font-family:var(--sans); font-size:11px; margin-top:14px; text-align:center;">Tap anywhere to stop</div>
+    </div>
+    <div class="screen-strobe-confirm" id="screenStrobeConfirm" style="display:none;">
+      <div style="color:#fff; font-family:var(--sans); font-size:15px; margin-bottom:16px; text-align:center;">Stop Luminous?</div>
+      <div style="display:flex; gap:14px;">
+        <div class="timer-btn" id="screenStrobeConfirmStop" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Stop</div>
+        <div class="timer-btn" id="screenStrobeConfirmContinue" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Continue</div>
+      </div>
     </div>
   </div>
 
