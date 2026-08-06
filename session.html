@@ -268,8 +268,10 @@
       <div class="callout" id="luminousNote" style="display:none; margin-top:10px;"></div>
 
       <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
-        <div class="ctrl-label" style="margin-bottom:8px;">No external hardware? <small>Uses your phone's own screen instead — lay it face-down against your closed eyes, headphones in</small></div>
-        <div class="timer-btn" id="screenStrobeBtn" style="cursor:pointer;">Screen Mode (no equipment needed)</div>
+        <div class="toggle-line">
+          <div class="ctrl-label">Screen Mode<small>no external hardware — uses your phone's own screen instead. Lay it face-down against your closed eyes, headphones in. Starts with the rest of the session when you press Start below.</small></div>
+          <div class="switch" id="screenStrobeSwitch"><div class="knob"></div></div>
+        </div>
       </div>
     </div>
 
@@ -389,7 +391,11 @@
   <div id="screenStrobeOverlay" class="screen-strobe-overlay" style="display:none;">
     <div class="screen-strobe-panel" id="screenStrobeLeft"></div>
     <div class="screen-strobe-panel" id="screenStrobeRight"></div>
-    <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none;"></div>
+    <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none; flex-direction:column; gap:16px;">
+      <div id="screenStrobeCountdownNum"></div>
+      <div style="font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">☀ Turn your screen brightness all the way up now</div>
+      <div id="screenStrobeRotateHint" style="display:none; font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">↻ Rotate your phone to landscape for the best fit</div>
+    </div>
     <div class="screen-strobe-controls" id="screenStrobeControls">
       <div style="color:#fff; font-family:var(--sans); font-size:12px; margin-bottom:8px; text-align:center;">Brightness</div>
       <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">

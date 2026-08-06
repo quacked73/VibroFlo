@@ -73,6 +73,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousEyeDrift: 40,
     luminousBrightnessVar: 30,
     luminousFollowMusic: false,
+    screenStrobeOn: false,
     driftOn: false,
     driftDepth: 1,
     driftRate: 1.5,
@@ -515,11 +516,13 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // screen held against closed eyes. Reuses the exact same wander/mapping
   // math as the audio-based Luminous sync (via luminous-math.js), rendered
   // as two flickering screen-half panels instead of an audio signal.
-  const screenStrobeBtn = document.getElementById("screenStrobeBtn");
+  const screenStrobeSwitch = document.getElementById("screenStrobeSwitch");
   const screenStrobeOverlay = document.getElementById("screenStrobeOverlay");
   const screenStrobeLeft = document.getElementById("screenStrobeLeft");
   const screenStrobeRight = document.getElementById("screenStrobeRight");
   const screenStrobeCountdown = document.getElementById("screenStrobeCountdown");
+  const screenStrobeCountdownNum = document.getElementById("screenStrobeCountdownNum");
+  const screenStrobeRotateHint = document.getElementById("screenStrobeRotateHint");
   const screenStrobeControls = document.getElementById("screenStrobeControls");
   const screenStrobeBrightness = document.getElementById("screenStrobeBrightness");
 
@@ -527,11 +530,37 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   let screenStrobeRafId = null;
   let screenStrobePhaseStart = 0;
   let screenStrobeStopTimer = null;
+  let screenStrobeCountdownTimer = null;
   let wakeLockRef = null;
 
-  screenStrobeBtn.addEventListener("click", () => {
-    showScreenStrobeWarning(startScreenStrobeSequence, () => {});
+  screenStrobeSwitch.addEventListener("click", () => {
+    if(state.screenStrobeOn){
+      state.screenStrobeOn = false;
+      screenStrobeSwitch.classList.remove("on");
+      return;
+    }
+    showScreenStrobeWarning(
+      () => {
+        state.screenStrobeOn = true;
+        screenStrobeSwitch.classList.add("on");
+      },
+      () => { /* declined — leave the switch off */ }
+    );
   });
+
+  // The left/right split only matches the eyes correctly in landscape.
+  // screen.orientation.lock() works on Android/Chrome (only in fullscreen)
+  // but Safari — desktop and iOS both — doesn't implement locking at all,
+  // only detection. So rather than assume landscape, this reads whatever
+  // orientation is ACTUALLY active and switches the split to match: side by
+  // side in landscape, stacked top/bottom in portrait. Re-checks live if the
+  // person rotates mid-session.
+  function applyScreenStrobeOrientation(){
+    const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+    screenStrobeOverlay.style.flexDirection = isPortrait ? "column" : "row";
+  }
+  window.addEventListener("orientationchange", applyScreenStrobeOrientation);
+  window.matchMedia("(orientation: portrait)").addEventListener?.("change", applyScreenStrobeOrientation);
 
   async function startScreenStrobeSequence(){
     screenStrobeOverlay.style.display = "flex";
@@ -539,20 +568,31 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeControls.style.display = "block";
     screenStrobeLeft.style.opacity = 0;
     screenStrobeRight.style.opacity = 0;
+    applyScreenStrobeOrientation();
 
     try{ await screenStrobeOverlay.requestFullscreen?.(); }catch(e){ /* not available on this platform — overlay still covers the viewport */ }
+    try{ await screen.orientation?.lock?.("landscape"); }catch(e){ /* Safari doesn't support locking at all — the adaptive layout above covers this instead */ }
     try{ wakeLockRef = await navigator.wakeLock?.request("screen"); }catch(e){ /* not available — screen may dim on its own after a while */ }
+    applyScreenStrobeOrientation(); // re-check once — a successful lock() above may have just changed it
+    screenStrobeRotateHint.style.display = window.matchMedia("(orientation: portrait)").matches ? "block" : "none";
+
+    // Registered here, not just once the flicker begins, so tapping out
+    // during the countdown itself works too — the main session's Stop
+    // button is covered by this overlay the moment it appears, so this is
+    // the only way out until the whole thing ends on its own.
+    screenStrobeOverlay.addEventListener("click", stopScreenStrobe, { once: true });
 
     let count = 6;
-    screenStrobeCountdown.textContent = count;
-    const countdownTimer = setInterval(() => {
+    screenStrobeCountdownNum.textContent = count;
+    screenStrobeCountdownTimer = setInterval(() => {
       count--;
       if(count <= 0){
-        clearInterval(countdownTimer);
+        clearInterval(screenStrobeCountdownTimer);
+        screenStrobeCountdownTimer = null;
         screenStrobeCountdown.style.display = "none";
         beginScreenStrobeFlicker();
       } else {
-        screenStrobeCountdown.textContent = count;
+        screenStrobeCountdownNum.textContent = count;
       }
     }, 1000);
   }
@@ -568,8 +608,6 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // mode in the app and shouldn't ever run unbounded.
     const durationMs = (sessionMinutes > 0 ? Math.min(sessionMinutes, 20) : 20) * 60000;
     screenStrobeStopTimer = setTimeout(stopScreenStrobe, durationMs);
-
-    screenStrobeOverlay.addEventListener("click", stopScreenStrobe, { once: true });
 
     const loop = (now) => {
       if(!screenStrobeRunning) return;
@@ -601,6 +639,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeRunning = false;
     if(screenStrobeRafId) cancelAnimationFrame(screenStrobeRafId);
     if(screenStrobeStopTimer) clearTimeout(screenStrobeStopTimer);
+    if(screenStrobeCountdownTimer){ clearInterval(screenStrobeCountdownTimer); screenStrobeCountdownTimer = null; }
     screenStrobeOverlay.style.display = "none";
     screenStrobeControls.style.display = "block";
     try{ wakeLockRef?.release(); }catch(e){}
@@ -1909,6 +1948,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       emdrScheduler();
     }
     if(state.luminousOn) startLuminous();
+    if(state.screenStrobeOn) startScreenStrobeSequence();
     if(!ambientPlaying){
       if(state.ambientQueue.length){
         playQueueFromStart(false);
@@ -2020,6 +2060,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(emdrTimerId){ clearTimeout(emdrTimerId); emdrTimerId = null; }
     if(driftTimerId){ clearTimeout(driftTimerId); driftTimerId = null; }
     stopLuminous();
+    stopScreenStrobe();
     stopAmbientSource();
     ambientNowPlaying.style.display = "none";
     renderAmbientTrackList();
