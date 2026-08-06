@@ -13,6 +13,7 @@ import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
+import { buildDecoderBank, readDecoderLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, levelsToColor } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -602,6 +603,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeControls.style.display = "none";
     screenStrobeRunning = true;
     screenStrobePhaseStart = performance.now();
+    screenStrobeCurrentMode = null;
 
     // Fixed-duration backup, using whatever Session Length is already set —
     // capped at 20 minutes even if the session itself is set to run
@@ -616,16 +618,49 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // Hoisted to module scope (not a closure inside beginScreenStrobeFlicker)
   // specifically so resumeScreenStrobeFlicker() can restart the exact same
   // loop after a pause, not just the very first start.
+  const screenStrobeDecodeStatus = document.getElementById("screenStrobeDecodeStatus");
+  let screenStrobeCurrentMode = null; // "decode-color" | "decode-brightness" | "synthetic" — tracked so the status note only shows on an actual change, not every frame
+
+  function showDecodeStatus(text){
+    screenStrobeDecodeStatus.textContent = text;
+    screenStrobeDecodeStatus.style.opacity = "1";
+    screenStrobeDecodeStatus.style.display = "block";
+    setTimeout(() => { screenStrobeDecodeStatus.style.opacity = "0"; }, 3500);
+  }
+
+  function currentAmbientTrack(){
+    return state.ambientTracks[state.ambientIndex] || null;
+  }
+
   function screenStrobeLoop(now){
     if(!screenStrobeRunning) return;
     const phaseTime = (now - screenStrobePhaseStart) / 1000;
     const brightnessCeiling = parseInt(screenStrobeBrightness.value, 10) / 100;
+    const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
 
+    const track = currentAmbientTrack();
+    if(track?.hasEmbeddedLight && luminousDecoderBank){
+      renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor);
+    } else {
+      if(screenStrobeCurrentMode !== "synthetic"){
+        screenStrobeCurrentMode = "synthetic";
+        screenStrobeLeft.style.backgroundColor = "";
+        screenStrobeRight.style.backgroundColor = "";
+      }
+      renderScreenStrobeSynthetic(phaseTime, brightnessCeiling, fadeInFactor);
+    }
+
+    screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
+  }
+
+  // The original tone-engine-driven flicker — used whenever the currently
+  // playing track (if any) isn't flagged as already having its own
+  // embedded signal, which is the common case.
+  function renderScreenStrobeSynthetic(phaseTime, brightnessCeiling, fadeInFactor){
     const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
     const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
     const eyeOffset = computeEyeDriftOffset(phaseTime, state.luminousEyeDrift) * driftScale;
     const wander = computeBrightnessWander(phaseTime, state.luminousBrightnessVar);
-    const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
     const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling * fadeInFactor;
 
     const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
@@ -637,8 +672,48 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
 
     screenStrobeLeft.style.opacity = (leftPhase * brightness).toFixed(3);
     screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
+  }
 
-    screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
+  // Reads a real AudioStrobe/SpectraStrobe signal from the currently
+  // playing track instead of generating one. Falls back to the synthetic
+  // flicker above if no usable signal actually turns up despite the track
+  // being flagged — a mis-tagged file or one where lossy compression ate
+  // the embedded tone shouldn't just go dark with no explanation.
+  function renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor){
+    const levels = readDecoderLevels(luminousDecoderBank);
+    const isSpectra = detectSpectraStrobeReference(luminousDecoderBank, levels);
+    const hasAudioStrobe = audioStrobeSignalPresent(levels);
+
+    if(isSpectra){
+      if(screenStrobeCurrentMode !== "decode-color"){
+        screenStrobeCurrentMode = "decode-color";
+        showDecodeStatus("SpectraStrobe signal detected — showing decoded color");
+      }
+      const leftColor = levelsToColor(levels.left);
+      const rightColor = levelsToColor(levels.right);
+      screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
+      screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
+      screenStrobeLeft.style.opacity = (brightnessCeiling * fadeInFactor).toFixed(3);
+      screenStrobeRight.style.opacity = (brightnessCeiling * fadeInFactor).toFixed(3);
+    } else if(hasAudioStrobe){
+      if(screenStrobeCurrentMode !== "decode-brightness"){
+        screenStrobeCurrentMode = "decode-brightness";
+        screenStrobeLeft.style.backgroundColor = "";
+        screenStrobeRight.style.backgroundColor = "";
+        showDecodeStatus("AudioStrobe signal detected — showing decoded brightness");
+      }
+      screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling * fadeInFactor).toFixed(3);
+      screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling * fadeInFactor).toFixed(3);
+    } else {
+      if(screenStrobeCurrentMode !== "synthetic"){
+        screenStrobeCurrentMode = "synthetic";
+        screenStrobeLeft.style.backgroundColor = "";
+        screenStrobeRight.style.backgroundColor = "";
+        showDecodeStatus("No AudioStrobe/SpectraStrobe signal detected in this track — using tone-synced flicker instead");
+      }
+      const phaseTime = (performance.now() - screenStrobePhaseStart) / 1000;
+      renderScreenStrobeSynthetic(phaseTime, brightnessCeiling, fadeInFactor);
+    }
   }
 
   // A single accidental brush shouldn't end the whole thing — pause instead,
@@ -768,6 +843,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   let emdrNextHitTime = 0;
 
   let ambientGain = null, ambientHighpass = null, ambientAnalyser = null;
+  let luminousDecoderBank = null;
   let ambientSource = null, ambientTrackGain = null;
   let ambientPlaying = false;
   state.ambientTracks = [];      // {name, buffer}
@@ -875,6 +951,11 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     ambientAnalyser = ctx.createAnalyser();
     ambientAnalyser.fftSize = 1024;
     ambientGain.connect(ambientAnalyser);
+
+    // Same tap point, for reading a real AudioStrobe/SpectraStrobe signal
+    // already embedded in whatever's playing — separate purpose from the
+    // analyser above, which just measures overall loudness for Follow Music.
+    luminousDecoderBank = buildDecoderBank(ctx, ambientGain);
 
     // Breath sound: two continuously-looping filtered noise sources, silent by
     // default, swelled up and down by the breath-phase envelope in drawScope.
