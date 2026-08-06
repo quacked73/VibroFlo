@@ -10,7 +10,8 @@ import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
 import { renderNav } from "./nav.js";
 import { logoSVG } from "./logo.js";
 import { initTour } from "./tour.js";
-import { showLuminousWarning } from "./luminous-safety.js";
+import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
+import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -410,61 +411,16 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousNote.style.display = "none";
   }
 
-  // A slow, smooth, deterministic wander — same shape as Variability Drift's
-  // tone wander, different rates/phase so the two never move in sync with
-  // each other. Returns a small Hz offset applied opposite-signed to each eye.
-  function computeEyeDriftOffset(){
-    if(!state.luminousEyeDrift) return 0;
-    const depth = (state.luminousEyeDrift/100) * 0.6; // up to ~0.6Hz apart at 100%
-    return depth * (0.6*Math.sin(2*Math.PI*0.05*luminousPhaseTime) +
-                     0.4*Math.sin(2*Math.PI*0.083*luminousPhaseTime + 2.1));
-  }
-
-  // Same technique again, aimed at brightness instead of rate.
-  function computeBrightnessWander(){
-    if(!state.luminousBrightnessVar) return 0;
-    const depth = (state.luminousBrightnessVar/100) * 0.35;
-    return depth * (0.5*Math.sin(2*Math.PI*0.037*luminousPhaseTime + 0.7) +
-                     0.5*Math.sin(2*Math.PI*0.061*luminousPhaseTime + 3.4));
-  }
-
   // Called on Drift's own 150ms cadence (piggybacking driftTick, since this
   // needs the same "smooth continuous wander" cadence) and immediately on
-  // any manual change — tab switch, band change, slider tweak.
-  const LUMINOUS_FLOOR = 7.84;  // Schumann resonance — below this, a flash reads as a slow blink, not a pulse
-  const LUMINOUS_CEILING = 50;  // matches Gamma's own ceiling in this app
-
-  // Delta and Theta run below the floor on their own. Rather than flash too
-  // slowly to feel coherent, step the rate up by a whole-number multiple
-  // until it lands inside the window — an octave-like relationship that
-  // stays mathematically tied to the real target state instead of picking
-  // an arbitrary number. Alpha/Beta/Gamma already sit inside the window, so
-  // they pass through unchanged.
-  function bestFitLuminousRate(engineRate){
-    if(engineRate >= LUMINOUS_FLOOR && engineRate <= LUMINOUS_CEILING) return engineRate;
-    if(engineRate < LUMINOUS_FLOOR){
-      let mult = Math.max(1, Math.ceil(LUMINOUS_FLOOR / engineRate));
-      let candidate = engineRate * mult;
-      while(candidate > LUMINOUS_CEILING && mult > 1){ mult--; candidate = engineRate * mult; }
-      return candidate >= LUMINOUS_FLOOR ? candidate : LUMINOUS_FLOOR;
-    }
-    let div = Math.max(1, Math.ceil(engineRate / LUMINOUS_CEILING));
-    return Math.max(LUMINOUS_FLOOR, Math.min(LUMINOUS_CEILING, engineRate / div));
-  }
-
-  // How much of the Eye Drift ceiling actually gets used — calm and unified
-  // for the slower, deeper bands; fuller and more dynamic for the faster,
-  // more alert ones. The Eye Drift slider stays the ceiling either way.
-  const BAND_DRIFT_SCALE = { delta: 0.2, theta: 0.4, alpha: 0.7, beta: 1, gamma: 1 };
-  function currentDriftScale(){
-    const band = state.engines[state.activeTab].currentBand;
-    return BAND_DRIFT_SCALE[band] !== undefined ? BAND_DRIFT_SCALE[band] : 1;
-  }
-
+  // any manual change — tab switch, band change, slider tweak. The actual
+  // wander/mapping math lives in luminous-math.js, shared with the
+  // phone-screen flicker mode so the two never drift apart from each other.
   function updateLuminousModulation(){
     if(!luminousLeft || !ctx) return;
     const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
-    const eyeOffset = computeEyeDriftOffset() * currentDriftScale();
+    const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
+    const eyeOffset = computeEyeDriftOffset(luminousPhaseTime, state.luminousEyeDrift) * driftScale;
     luminousLeft.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate - eyeOffset/2), ctx.currentTime, 0.3);
     luminousRight.lfo.frequency.setTargetAtTime(Math.max(0.1, baseRate + eyeOffset/2), ctx.currentTime, 0.3);
 
@@ -472,7 +428,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // instead — skip the drift-based wander so the two don't fight over the
     // same parameter. Embedded-signal suppression overrides both.
     if(!state.luminousFollowMusic){
-      const target = luminousSuppressed ? 0 : Math.max(0.05, Math.min(1, LUMINOUS_BASE_STRENGTH + computeBrightnessWander()));
+      const wander = computeBrightnessWander(luminousPhaseTime, state.luminousBrightnessVar);
+      const target = luminousSuppressed ? 0 : Math.max(0.05, Math.min(1, LUMINOUS_BASE_STRENGTH + wander));
       luminousLeft.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
       luminousRight.strength.gain.setTargetAtTime(target, ctx.currentTime, 0.3);
     }
@@ -553,6 +510,103 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousFollowMusicSwitch.classList.toggle("on", state.luminousFollowMusic);
     updateLuminousNote();
   });
+
+  // ---------- Screen Strobe: no external hardware, uses the phone's own
+  // screen held against closed eyes. Reuses the exact same wander/mapping
+  // math as the audio-based Luminous sync (via luminous-math.js), rendered
+  // as two flickering screen-half panels instead of an audio signal.
+  const screenStrobeBtn = document.getElementById("screenStrobeBtn");
+  const screenStrobeOverlay = document.getElementById("screenStrobeOverlay");
+  const screenStrobeLeft = document.getElementById("screenStrobeLeft");
+  const screenStrobeRight = document.getElementById("screenStrobeRight");
+  const screenStrobeCountdown = document.getElementById("screenStrobeCountdown");
+  const screenStrobeControls = document.getElementById("screenStrobeControls");
+  const screenStrobeBrightness = document.getElementById("screenStrobeBrightness");
+
+  let screenStrobeRunning = false;
+  let screenStrobeRafId = null;
+  let screenStrobePhaseStart = 0;
+  let screenStrobeStopTimer = null;
+  let wakeLockRef = null;
+
+  screenStrobeBtn.addEventListener("click", () => {
+    showScreenStrobeWarning(startScreenStrobeSequence, () => {});
+  });
+
+  async function startScreenStrobeSequence(){
+    screenStrobeOverlay.style.display = "flex";
+    screenStrobeCountdown.style.display = "flex";
+    screenStrobeControls.style.display = "block";
+    screenStrobeLeft.style.opacity = 0;
+    screenStrobeRight.style.opacity = 0;
+
+    try{ await screenStrobeOverlay.requestFullscreen?.(); }catch(e){ /* not available on this platform — overlay still covers the viewport */ }
+    try{ wakeLockRef = await navigator.wakeLock?.request("screen"); }catch(e){ /* not available — screen may dim on its own after a while */ }
+
+    let count = 6;
+    screenStrobeCountdown.textContent = count;
+    const countdownTimer = setInterval(() => {
+      count--;
+      if(count <= 0){
+        clearInterval(countdownTimer);
+        screenStrobeCountdown.style.display = "none";
+        beginScreenStrobeFlicker();
+      } else {
+        screenStrobeCountdown.textContent = count;
+      }
+    }, 1000);
+  }
+
+  function beginScreenStrobeFlicker(){
+    screenStrobeControls.style.display = "none";
+    screenStrobeRunning = true;
+    screenStrobePhaseStart = performance.now();
+
+    // Fixed-duration backup, using whatever Session Length is already set —
+    // capped at 20 minutes even if the session itself is set to run
+    // indefinitely, since this is a more intense exposure than any other
+    // mode in the app and shouldn't ever run unbounded.
+    const durationMs = (sessionMinutes > 0 ? Math.min(sessionMinutes, 20) : 20) * 60000;
+    screenStrobeStopTimer = setTimeout(stopScreenStrobe, durationMs);
+
+    screenStrobeOverlay.addEventListener("click", stopScreenStrobe, { once: true });
+
+    const loop = (now) => {
+      if(!screenStrobeRunning) return;
+      const phaseTime = (now - screenStrobePhaseStart) / 1000;
+      const brightnessCeiling = parseInt(screenStrobeBrightness.value, 10) / 100;
+
+      const baseRate = bestFitLuminousRate(Math.max(0.1, state.engines[state.activeTab].beatCurrent));
+      const driftScale = driftScaleForBand(state.engines[state.activeTab].currentBand);
+      const eyeOffset = computeEyeDriftOffset(phaseTime, state.luminousEyeDrift) * driftScale;
+      const wander = computeBrightnessWander(phaseTime, state.luminousBrightnessVar);
+      const brightness = Math.max(0.05, Math.min(1, 0.8 + wander)) * brightnessCeiling;
+
+      const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
+      const rightRate = Math.max(0.1, baseRate + eyeOffset/2);
+      // Square-ish flash: a raised sine, sharper than the audio version's
+      // smooth gate, since a screen flash reads better as a distinct pulse.
+      const leftPhase = (Math.sin(2*Math.PI*leftRate*phaseTime) + 1) / 2;
+      const rightPhase = (Math.sin(2*Math.PI*rightRate*phaseTime) + 1) / 2;
+
+      screenStrobeLeft.style.opacity = (leftPhase * brightness).toFixed(3);
+      screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
+
+      screenStrobeRafId = requestAnimationFrame(loop);
+    };
+    screenStrobeRafId = requestAnimationFrame(loop);
+  }
+
+  async function stopScreenStrobe(){
+    screenStrobeRunning = false;
+    if(screenStrobeRafId) cancelAnimationFrame(screenStrobeRafId);
+    if(screenStrobeStopTimer) clearTimeout(screenStrobeStopTimer);
+    screenStrobeOverlay.style.display = "none";
+    screenStrobeControls.style.display = "block";
+    try{ wakeLockRef?.release(); }catch(e){}
+    wakeLockRef = null;
+    try{ if(document.fullscreenElement) await document.exitFullscreen(); }catch(e){}
+  }
 
   // ---------- Timer ----------
   const timerRow = document.getElementById("timerRow");

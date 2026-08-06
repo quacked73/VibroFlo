@@ -266,6 +266,11 @@
       </div>
 
       <div class="callout" id="luminousNote" style="display:none; margin-top:10px;"></div>
+
+      <div style="margin-top:14px; border-top:1px solid var(--line); padding-top:14px;">
+        <div class="ctrl-label" style="margin-bottom:8px;">No external hardware? <small>Uses your phone's own screen instead — lay it face-down against your closed eyes, headphones in</small></div>
+        <div class="timer-btn" id="screenStrobeBtn" style="cursor:pointer;">Screen Mode (no equipment needed)</div>
+      </div>
     </div>
 
     <div class="section dim-target" id="tour-masking">
@@ -381,6 +386,16 @@
     Nothing here is medical advice; stop if you feel discomfort. <button class="focus-toggle" id="focusToggle" style="margin-left:6px;">Dim UI for work ⌄</button>
   </div>
 
+  <div id="screenStrobeOverlay" class="screen-strobe-overlay" style="display:none;">
+    <div class="screen-strobe-panel" id="screenStrobeLeft"></div>
+    <div class="screen-strobe-panel" id="screenStrobeRight"></div>
+    <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none;"></div>
+    <div class="screen-strobe-controls" id="screenStrobeControls">
+      <div style="color:#fff; font-family:var(--sans); font-size:12px; margin-bottom:8px; text-align:center;">Brightness</div>
+      <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">
+      <div style="color:rgba(255,255,255,0.6); font-family:var(--sans); font-size:11px; margin-top:14px; text-align:center;">Tap anywhere to stop</div>
+    </div>
+  </div>
 
 <script type="module" src="/src/js/session.js"></script>
 </body>
