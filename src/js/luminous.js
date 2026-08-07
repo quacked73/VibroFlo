@@ -16,6 +16,22 @@ import { getLuminousPrefs, saveLuminousPrefs } from "./luminous-prefs.js";
 
 renderNav("luminous");
 
+const luminousTabs = document.querySelectorAll(".tab-row .pill");
+const luminousPanels = {
+  settings: document.getElementById("panel-settings"),
+  hardware: document.getElementById("panel-hardware"),
+  play: document.getElementById("panel-play"),
+};
+luminousTabs.forEach(tab => {
+  tab.addEventListener("click", () => {
+    luminousTabs.forEach(t => t.classList.remove("active"));
+    tab.classList.add("active");
+    Object.entries(luminousPanels).forEach(([key, el]) => {
+      el.style.display = key === tab.dataset.tab ? "block" : "none";
+    });
+  });
+});
+
 // ---------- Live Session Behavior (persisted preferences) ----------
 const prefFadeIn = document.getElementById("prefFadeIn");
 const prefCountdown = document.getElementById("prefCountdown");
