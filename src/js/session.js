@@ -13,7 +13,7 @@ import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
-import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, levelsToColor } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -690,17 +690,33 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const rawLevels = readDecoderLevels(luminousDecoderBank);
     // Detection stays on the raw signal — smoothing is for how it looks
     // rendered, not for deciding whether a real signal is present.
-    const isSpectra = detectSpectraStrobeReference(luminousDecoderBank, rawLevels);
-    const hasAudioStrobe = audioStrobeSignalPresent(rawLevels);
+    // Lumasonic checked first: its reference tone (22500Hz) doesn't overlap
+    // with anything else these codecs use, so it's the cleanest possible
+    // discriminator — no risk of a false read from SpectraStrobe/AudioStrobe
+    // content bleeding into it.
+    const isLumasonic = detectLumasonic(rawLevels);
+    const isSpectra = !isLumasonic && detectSpectraStrobeReference(luminousDecoderBank, rawLevels);
+    const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels);
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
 
-    if(isSpectra){
+    if(isLumasonic){
+      if(screenStrobeCurrentMode !== "decode-lumasonic"){
+        screenStrobeCurrentMode = "decode-lumasonic";
+        showDecodeStatus("Lumasonic signal detected — showing decoded color");
+      }
+      const leftColor = levelsToColorLumasonic(levels.left);
+      const rightColor = levelsToColorLumasonic(levels.right);
+      screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
+      screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
+      screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
+      screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
+    } else if(isSpectra){
       if(screenStrobeCurrentMode !== "decode-color"){
         screenStrobeCurrentMode = "decode-color";
         showDecodeStatus("SpectraStrobe signal detected — showing decoded color");
       }
-      const leftColor = levelsToColor(levels.left);
-      const rightColor = levelsToColor(levels.right);
+      const leftColor = levelsToColorSpectra(levels.left);
+      const rightColor = levelsToColorSpectra(levels.right);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       // Deliberately no fadeInFactor here — decoding a real signal should
@@ -722,7 +738,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeCurrentMode = "synthetic";
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
-        showDecodeStatus("No AudioStrobe/SpectraStrobe signal detected in this track — using tone-synced flicker instead");
+        showDecodeStatus("No Lumasonic/AudioStrobe/SpectraStrobe signal detected in this track — using tone-synced flicker instead");
       }
       const phaseTime = (performance.now() - screenStrobePhaseStart) / 1000;
       renderScreenStrobeSynthetic(phaseTime, brightnessCeiling, fadeInFactor);
@@ -764,7 +780,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
     screenStrobeConfirm.style.display = "none";
     screenStrobePaused = false;
-    stopScreenStrobe();
+    stop(); // stops the whole session — audio included — not just the screen visual
   });
 
   screenStrobeConfirmContinue.addEventListener("click", (e) => {
@@ -913,7 +929,17 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   }
 
   function buildGraph(){
-    ctx = new (window.AudioContext || window.webkitAudioContext)();
+    // Explicitly requesting 48kHz, not just accepting whatever the device
+    // defaults to: Lumasonic's reference tone sits at 22500Hz, which is
+    // above the 22050Hz Nyquist limit of standard 44.1kHz audio — at that
+    // rate the tone doesn't just get quieter, it aliases into a different,
+    // wrong frequency entirely. 48kHz (Nyquist 24000Hz) is what the format
+    // is actually built for.
+    try{
+      ctx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 });
+    }catch(e){
+      ctx = new (window.AudioContext || window.webkitAudioContext)();
+    }
 
     masterGain = ctx.createGain();
     masterGain.gain.value = 0;

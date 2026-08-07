@@ -1,21 +1,30 @@
-// Reads an AudioStrobe/SpectraStrobe signal already embedded in playing
-// audio — the other half of Luminous's own signal generator. Pure signal
-// analysis: isolate a narrow frequency band with a bandpass filter, read its
-// live amplitude. That's the same technique already proven out for Follow
-// Music, aimed at a specific tone instead of the whole broadband signal.
-// Works identically on every platform, since nothing here touches hardware —
-// it's just reading audio the browser already has access to.
+// Reads a light-sync signal already embedded in playing audio — the other
+// half of Luminous's own signal generator. Pure signal analysis: isolate a
+// narrow frequency band with a bandpass filter, read its live amplitude.
+// That's the same technique already proven out for Follow Music, aimed at
+// specific tones instead of the whole broadband signal. Works identically
+// on every platform, since nothing here touches hardware — it's just
+// reading audio the browser already has access to.
 //
-// Honest scope note: the core technique (isolate a band, read its
-// amplitude) is solid, ordinary signal processing. The exact SpectraStrobe
-// channel-to-color mapping below is a best-effort interpretation, not a
-// verified spec — the precise internal mapping isn't fully public
-// documentation. Treat color results as experimental until confirmed
-// against real hardware or known-good SpectraStrobe content.
+// Frequencies and RGB channel assignments below are taken directly from
+// Cymatic Somatics' archived, MIT-licensed Lumasonic SDK headers (2025) —
+// not a guess. Three distinct codecs exist, each with its own frequencies
+// and its own R/G/B-to-frequency order (Lumasonic runs high-to-low,
+// SpectraStrobe runs low-to-high — this is a real, source-confirmed
+// difference, not an inconsistency in this file):
+//
+//   Lumasonic:     ref 22500, red 21000, green 19500, blue 18000
+//   SpectraStrobe: ref 18200, red 18700, green 19200, blue 19700
+//   AudioStrobe:   single tone at 19200 (brightness only, no color)
+//
+// Lumasonic's reference tone (22500) doesn't overlap with anything else
+// these codecs use, so it's checked first as a clean, unambiguous signal
+// that content is Lumasonic-encoded rather than SpectraStrobe or AudioStrobe.
 
+const LUMASONIC_FREQS = { ref: 22500, r: 21000, g: 19500, b: 18000 };
+const SPECTRA_FREQS = { ref: 18200, r: 18700, g: 19200, b: 19700 };
 const AUDIOSTROBE_FREQ = 19200;
-const SPECTRA_FREQS = { ref: 18200, a: 18700, b: 19200, c: 19700 };
-const NOISE_REF_FREQ = 17000; // clearly outside any AudioStrobe/SpectraStrobe band, used as a live noise-floor baseline instead of one fixed guessed number
+const NOISE_REF_FREQ = 16000; // clearly below every codec's lowest tone (Lumasonic's blue at 18000), used as a live noise-floor baseline instead of one fixed guessed number
 const MIN_SIGNAL_RATIO = 2.5; // target band must exceed the noise baseline by this multiple to count as "real," not just ambient hiss
 
 export function buildDecoderBank(ctx, sourceNode){
@@ -34,7 +43,12 @@ export function buildDecoderBank(ctx, sourceNode){
     return { analyser, buffer: new Float32Array(analyser.fftSize) };
   }
 
-  const freqs = { as: AUDIOSTROBE_FREQ, ref: SPECTRA_FREQS.ref, a: SPECTRA_FREQS.a, b: SPECTRA_FREQS.b, c: SPECTRA_FREQS.c, noise: NOISE_REF_FREQ };
+  const freqs = {
+    as: AUDIOSTROBE_FREQ,
+    ss_ref: SPECTRA_FREQS.ref, ss_r: SPECTRA_FREQS.r, ss_g: SPECTRA_FREQS.g, ss_b: SPECTRA_FREQS.b,
+    ls_ref: LUMASONIC_FREQS.ref, ls_r: LUMASONIC_FREQS.r, ls_g: LUMASONIC_FREQS.g, ls_b: LUMASONIC_FREQS.b,
+    noise: NOISE_REF_FREQ,
+  };
   const bank = { left: {}, right: {}, refHistory: [] };
   for(const [key, freq] of Object.entries(freqs)){
     bank.left[key] = bandpass(freq, 0);
@@ -90,15 +104,23 @@ function noiseBaseline(levels){
   return Math.max(0.0008, (levels.left.noise + levels.right.noise) / 2);
 }
 
-// SpectraStrobe's reference tone alternates hard left/right at 10-50 times a
-// second, signaling "this is SpectraStrobe, not just AudioStrobe." Rather
-// than try to precisely clock that rate, this checks a short rolling window
-// for real, fast alternation between the two sides — noise or a steady pan
-// doesn't produce this pattern, genuine alternation does.
+// Lumasonic's reference tone doesn't overlap with anything else — a clean,
+// unambiguous "this is Lumasonic" check, no pattern-matching needed.
+export function detectLumasonic(levels){
+  const baseline = noiseBaseline(levels);
+  return Math.max(levels.left.ls_ref, levels.right.ls_ref) > baseline * MIN_SIGNAL_RATIO;
+}
+
+// SpectraStrobe's reference tone alternates hard left/right at 20 times a
+// second (confirmed — SS_REF_PAN_LFO_FREQ in the source SDK), signaling
+// "this is SpectraStrobe, not just AudioStrobe." Checking for real, fast
+// alternation in a short rolling window rather than trying to precisely
+// clock the exact rate — noise or a steady pan doesn't produce this
+// pattern, genuine 20Hz alternation does.
 const REF_HISTORY_LEN = 12;
 
 export function detectSpectraStrobeReference(bank, levels){
-  const balance = levels.left.ref - levels.right.ref;
+  const balance = levels.left.ss_ref - levels.right.ss_ref;
   bank.refHistory.push(balance);
   if(bank.refHistory.length > REF_HISTORY_LEN) bank.refHistory.shift();
   if(bank.refHistory.length < REF_HISTORY_LEN) return false;
@@ -116,10 +138,16 @@ export function audioStrobeSignalPresent(levels){
   return Math.max(levels.left.as, levels.right.as) > baseline * MIN_SIGNAL_RATIO;
 }
 
-// Best-effort frequency-to-color assignment (ascending frequency → R/G/B) —
-// see the file header. Scaled generously since these decoded amplitudes run
-// much smaller than a full-scale signal by the time they reach here.
-export function levelsToColor(sideLevels){
+// Confirmed frequency-to-channel assignment from the source SDK — note the
+// order is genuinely different between the two codecs (Lumasonic runs
+// high-to-low R→G→B, SpectraStrobe runs low-to-high), not a copy-paste
+// inconsistency.
+export function levelsToColorLumasonic(sideLevels){
   const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 1800)));
-  return { r: scale(sideLevels.a), g: scale(sideLevels.b), b: scale(sideLevels.c) };
+  return { r: scale(sideLevels.ls_r), g: scale(sideLevels.ls_g), b: scale(sideLevels.ls_b) };
+}
+
+export function levelsToColorSpectra(sideLevels){
+  const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 1800)));
+  return { r: scale(sideLevels.ss_r), g: scale(sideLevels.ss_g), b: scale(sideLevels.ss_b) };
 }
