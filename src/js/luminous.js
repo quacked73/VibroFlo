@@ -18,6 +18,8 @@ renderNav("luminous");
 
 // ---------- Live Session Behavior (persisted preferences) ----------
 const prefFadeIn = document.getElementById("prefFadeIn");
+const prefCountdown = document.getElementById("prefCountdown");
+const prefCountdownVal = document.getElementById("prefCountdownVal");
 const prefFadeInVal = document.getElementById("prefFadeInVal");
 const prefEyeDrift = document.getElementById("prefEyeDrift");
 const prefEyeDriftVal = document.getElementById("prefEyeDriftVal");
@@ -31,6 +33,8 @@ const prefScreenBrightnessVal = document.getElementById("prefScreenBrightnessVal
   const prefs = getLuminousPrefs();
   prefFadeIn.value = prefs.fadeInSeconds;
   prefFadeInVal.textContent = prefs.fadeInSeconds;
+  prefCountdown.value = prefs.countdownSeconds;
+  prefCountdownVal.textContent = prefs.countdownSeconds;
   prefEyeDrift.value = prefs.eyeDrift;
   prefEyeDriftVal.textContent = prefs.eyeDrift;
   prefBrightnessVar.value = prefs.brightnessVar;
@@ -43,6 +47,10 @@ const prefScreenBrightnessVal = document.getElementById("prefScreenBrightnessVal
 prefFadeIn.addEventListener("input", () => {
   prefFadeInVal.textContent = prefFadeIn.value;
   saveLuminousPrefs({ fadeInSeconds: parseInt(prefFadeIn.value, 10) });
+});
+prefCountdown.addEventListener("input", () => {
+  prefCountdownVal.textContent = prefCountdown.value;
+  saveLuminousPrefs({ countdownSeconds: parseInt(prefCountdown.value, 10) });
 });
 prefEyeDrift.addEventListener("input", () => {
   prefEyeDriftVal.textContent = prefEyeDrift.value;
@@ -241,3 +249,255 @@ channelRow.addEventListener("click", (e) => {
   applyChannelGains();
   updateStatus();
 });
+
+// ---------- Play a File — Luminous Only ----------
+// A fully standalone Screen Mode: pick a track, decode its real embedded
+// signal, and watch it — no Session, no tone engines, no Home involved at
+// all. Reuses the same decoder, warning, and preferences modules Session
+// uses, but runs its own separate audio graph and its own copy of the
+// countdown/pause/confirm state machine, since this page has no access to
+// Session's — they're genuinely separate JavaScript environments once
+// loaded as separate pages.
+
+import { loadTrackList } from "./ambient-library.js";
+import {
+  buildDecoderBank, readDecoderLevels, smoothLevels,
+  audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic,
+  levelsToColorSpectra, levelsToColorLumasonic,
+} from "./luminous-decode.js";
+import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
+
+const standaloneTrackSelect = document.getElementById("standaloneTrackSelect");
+const standaloneStartBtn = document.getElementById("standaloneStartBtn");
+
+const ssOverlay = document.getElementById("screenStrobeOverlay");
+const ssLeft = document.getElementById("screenStrobeLeft");
+const ssRight = document.getElementById("screenStrobeRight");
+const ssCountdown = document.getElementById("screenStrobeCountdown");
+const ssCountdownNum = document.getElementById("screenStrobeCountdownNum");
+const ssRotateHint = document.getElementById("screenStrobeRotateHint");
+const ssControls = document.getElementById("screenStrobeControls");
+const ssBrightness = document.getElementById("screenStrobeBrightness");
+const ssConfirm = document.getElementById("screenStrobeConfirm");
+const ssConfirmStop = document.getElementById("screenStrobeConfirmStop");
+const ssConfirmContinue = document.getElementById("screenStrobeConfirmContinue");
+const ssDecodeStatus = document.getElementById("screenStrobeDecodeStatus");
+
+let standaloneTracks = [];
+let saCtx = null, saSource = null, saDecoderBank = null;
+let saRunning = false, saPaused = false, saRafId = null, saPhaseStart = 0, saMode = null;
+let saCountdownTimer = null, saConfirmTimer = null, saWakeLock = null, saStopTimer = null;
+let saDecodeLastTime = 0;
+
+(async function loadStandaloneTracks(){
+  try{ standaloneTracks = await loadTrackList(); }
+  catch(e){ console.warn("Could not load track library:", e); }
+  standaloneTrackSelect.innerHTML = "";
+  if(!standaloneTracks.length){
+    standaloneTrackSelect.innerHTML = `<option value="">No files in your library yet — add some in Settings</option>`;
+    return;
+  }
+  const placeholder = document.createElement("option");
+  placeholder.value = ""; placeholder.textContent = "Choose a track…";
+  standaloneTrackSelect.appendChild(placeholder);
+  standaloneTracks.forEach((t, i) => {
+    const opt = document.createElement("option");
+    opt.value = String(i);
+    opt.textContent = t.name + (t.hasEmbeddedLight ? " 💡" : "");
+    standaloneTrackSelect.appendChild(opt);
+  });
+})();
+
+function saApplyOrientation(){
+  const isPortrait = window.matchMedia("(orientation: portrait)").matches;
+  ssOverlay.style.flexDirection = isPortrait ? "column" : "row";
+}
+window.addEventListener("orientationchange", saApplyOrientation);
+window.matchMedia("(orientation: portrait)").addEventListener?.("change", saApplyOrientation);
+
+standaloneStartBtn.addEventListener("click", () => {
+  const idx = parseInt(standaloneTrackSelect.value, 10);
+  if(isNaN(idx) || !standaloneTracks[idx]) return;
+  showLuminousWarning(() => startStandaloneSequence(standaloneTracks[idx]), () => {});
+});
+
+async function startStandaloneSequence(track){
+  const prefs = getLuminousPrefs();
+  ssBrightness.value = prefs.screenBrightnessDefault;
+
+  try{ saCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }); }
+  catch(e){ saCtx = new (window.AudioContext || window.webkitAudioContext)(); }
+  if(saCtx.state === "suspended") await saCtx.resume();
+
+  let arrayBuffer;
+  if(track.source === "bundled"){
+    const resp = await fetch(track.file);
+    arrayBuffer = await resp.arrayBuffer();
+  } else if(track.blob){
+    arrayBuffer = await track.blob.arrayBuffer();
+  } else {
+    console.warn("Track has no playable audio source");
+    return;
+  }
+  const audioBuffer = await saCtx.decodeAudioData(arrayBuffer);
+
+  saSource = saCtx.createBufferSource();
+  saSource.buffer = audioBuffer;
+  const trackGain = saCtx.createGain();
+  trackGain.gain.value = 0.8;
+  saSource.connect(trackGain);
+  trackGain.connect(saCtx.destination);
+  saDecoderBank = buildDecoderBank(saCtx, trackGain);
+
+  saSource.onended = () => { if(saRunning) stopStandalone(); };
+
+  ssOverlay.style.display = "flex";
+  ssCountdown.style.display = "flex";
+  ssControls.style.display = "block";
+  ssLeft.style.opacity = 0;
+  ssRight.style.opacity = 0;
+  ssLeft.style.backgroundColor = "";
+  ssRight.style.backgroundColor = "";
+  saApplyOrientation();
+
+  try{ await ssOverlay.requestFullscreen?.(); }catch(e){}
+  try{ await screen.orientation?.lock?.("landscape"); }catch(e){}
+  try{ saWakeLock = await navigator.wakeLock?.request("screen"); }catch(e){}
+  saApplyOrientation();
+  ssRotateHint.style.display = window.matchMedia("(orientation: portrait)").matches ? "block" : "none";
+
+  ssOverlay.addEventListener("click", saHandleOverlayTap);
+
+  let count = Math.max(5, Math.min(15, prefs.countdownSeconds));
+  ssCountdownNum.textContent = count;
+  saCountdownTimer = setInterval(() => {
+    count--;
+    if(count <= 0){
+      clearInterval(saCountdownTimer);
+      saCountdownTimer = null;
+      ssCountdown.style.display = "none";
+      saSource.start();
+      beginStandaloneFlicker(Math.min(audioBuffer.duration, 20 * 60));
+    } else {
+      ssCountdownNum.textContent = count;
+    }
+  }, 1000);
+}
+
+function beginStandaloneFlicker(safetyCapSeconds){
+  saRunning = true;
+  saPhaseStart = performance.now();
+  saMode = null;
+  saDecodeLastTime = 0;
+  saStopTimer = setTimeout(stopStandalone, safetyCapSeconds * 1000);
+  saRafId = requestAnimationFrame(saLoop);
+}
+
+function saShowStatus(text){
+  ssDecodeStatus.textContent = text;
+  ssDecodeStatus.style.opacity = "1";
+  ssDecodeStatus.style.display = "block";
+  setTimeout(() => { ssDecodeStatus.style.opacity = "0"; }, 3500);
+}
+
+function saLoop(now){
+  if(!saRunning) return;
+  const dtSeconds = saDecodeLastTime ? (now - saDecodeLastTime) / 1000 : 1/60;
+  saDecodeLastTime = now;
+
+  const rawLevels = readDecoderLevels(saDecoderBank);
+  const isLumasonic = detectLumasonic(rawLevels);
+  const isSpectra = !isLumasonic && detectSpectraStrobeReference(saDecoderBank, rawLevels);
+  const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels);
+  const levels = smoothLevels(saDecoderBank, rawLevels, dtSeconds);
+  const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
+
+  if(isLumasonic){
+    if(saMode !== "lumasonic"){ saMode = "lumasonic"; saShowStatus("Lumasonic signal detected — showing decoded color"); }
+    const l = levelsToColorLumasonic(levels.left), r = levelsToColorLumasonic(levels.right);
+    ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
+    ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
+    ssLeft.style.opacity = brightnessCeiling.toFixed(3);
+    ssRight.style.opacity = brightnessCeiling.toFixed(3);
+  } else if(isSpectra){
+    if(saMode !== "spectra"){ saMode = "spectra"; saShowStatus("SpectraStrobe signal detected — showing decoded color"); }
+    const l = levelsToColorSpectra(levels.left), r = levelsToColorSpectra(levels.right);
+    ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
+    ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
+    ssLeft.style.opacity = brightnessCeiling.toFixed(3);
+    ssRight.style.opacity = brightnessCeiling.toFixed(3);
+  } else if(hasAudioStrobe){
+    if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; saShowStatus("AudioStrobe signal detected — showing decoded brightness"); }
+    ssLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
+    ssRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
+  } else {
+    // No signal right now — a genuinely quiet passage is real, authored
+    // data, not an absence to paper over with a fabricated pattern. Go dark.
+    if(saMode !== "silent"){ saMode = "silent"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; saShowStatus("No signal right now — could be a quiet passage, or this track may not have real embedded content"); }
+    ssLeft.style.opacity = "0";
+    ssRight.style.opacity = "0";
+  }
+
+  saRafId = requestAnimationFrame(saLoop);
+}
+
+function saPauseAndConfirm(){
+  if(saPaused) return;
+  saPaused = true;
+  if(saRafId){ cancelAnimationFrame(saRafId); saRafId = null; }
+  ssLeft.style.opacity = 0;
+  ssRight.style.opacity = 0;
+  ssConfirm.style.display = "flex";
+  saConfirmTimer = setTimeout(saResumeFlicker, 5000);
+}
+
+function saResumeFlicker(){
+  if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  ssConfirm.style.display = "none";
+  saPaused = false;
+  if(saRunning) saRafId = requestAnimationFrame(saLoop);
+}
+
+function saHandleOverlayTap(){
+  if(saPaused) return;
+  if(!saRunning){
+    stopStandalone(); // still in the countdown — nothing disruptive happening yet
+  } else {
+    saPauseAndConfirm();
+  }
+}
+
+ssConfirmStop.addEventListener("click", (e) => {
+  e.stopPropagation();
+  if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  ssConfirm.style.display = "none";
+  saPaused = false;
+  stopStandalone();
+  broadcastStopAll(); // reach across to Session too, even in a separate tab
+});
+ssConfirmContinue.addEventListener("click", (e) => {
+  e.stopPropagation();
+  saResumeFlicker();
+});
+
+async function stopStandalone(){
+  saRunning = false;
+  if(saRafId) cancelAnimationFrame(saRafId);
+  if(saCountdownTimer){ clearInterval(saCountdownTimer); saCountdownTimer = null; }
+  if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  if(saStopTimer){ clearTimeout(saStopTimer); saStopTimer = null; }
+  saPaused = false;
+  ssConfirm.style.display = "none";
+  ssOverlay.style.display = "none";
+  ssControls.style.display = "block";
+  try{ saSource?.stop(); }catch(e){}
+  saSource = null;
+  try{ saWakeLock?.release(); }catch(e){}
+  saWakeLock = null;
+  try{ if(document.fullscreenElement) await document.exitFullscreen(); }catch(e){}
+  try{ if(saCtx) await saCtx.close(); }catch(e){}
+  saCtx = null;
+}
+
+// If Session (or another tab) broadcasts a stop, stop here too.
+onBroadcastStopAll(() => { if(saRunning || saCountdownTimer) stopStandalone(); });

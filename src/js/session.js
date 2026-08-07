@@ -13,6 +13,7 @@ import { initTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
+import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
 import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic } from "./luminous-decode.js";
 
 renderNav("session");
@@ -581,7 +582,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // thing.
     screenStrobeOverlay.addEventListener("click", handleScreenStrobeOverlayTap);
 
-    let count = 6;
+    let count = Math.max(5, Math.min(15, luminousPrefs.countdownSeconds));
     screenStrobeCountdownNum.textContent = count;
     screenStrobeCountdownTimer = setInterval(() => {
       count--;
@@ -734,14 +735,20 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
       screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
     } else {
-      if(screenStrobeCurrentMode !== "synthetic"){
-        screenStrobeCurrentMode = "synthetic";
+      // A flagged track with no signal *right now* isn't necessarily
+      // broken — amplitude is brightness, so a genuinely quiet passage
+      // looks identical to "no signal" from here, and that's valid,
+      // authored data, not an absence to paper over. Go dark rather than
+      // fabricate a substitute pattern that isn't what the track actually
+      // encodes at this moment.
+      if(screenStrobeCurrentMode !== "decode-silent"){
+        screenStrobeCurrentMode = "decode-silent";
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
-        showDecodeStatus("No Lumasonic/AudioStrobe/SpectraStrobe signal detected in this track — using tone-synced flicker instead");
+        showDecodeStatus("No signal right now — could be a quiet passage in the track, or it may not have real embedded content");
       }
-      const phaseTime = (performance.now() - screenStrobePhaseStart) / 1000;
-      renderScreenStrobeSynthetic(phaseTime, brightnessCeiling, fadeInFactor);
+      screenStrobeLeft.style.opacity = "0";
+      screenStrobeRight.style.opacity = "0";
     }
   }
 
@@ -781,6 +788,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeConfirm.style.display = "none";
     screenStrobePaused = false;
     stop(); // stops the whole session — audio included — not just the screen visual
+    broadcastStopAll(); // and any other open tab (like a standalone Luminous player) too
   });
 
   screenStrobeConfirmContinue.addEventListener("click", (e) => {
@@ -2301,6 +2309,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   drawScope();
   renderProgressStats();
   initTour();
+  onBroadcastStopAll(() => { if(running) stop(); });
 
   // Restore whatever was running last time, so a returning visit opens where
   // you left off instead of the defaults every time. Applied before the

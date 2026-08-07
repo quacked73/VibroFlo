@@ -11,6 +11,7 @@ const DEFAULTS = {
   followMusic: false,
   fadeInSeconds: 10,       // shared by the AudioStrobe signal and the Screen Mode flicker
   screenBrightnessDefault: 70,
+  countdownSeconds: 6,     // 5-15s range — time to get positioned before Screen Mode actually starts flickering
 };
 
 export function getLuminousPrefs(){

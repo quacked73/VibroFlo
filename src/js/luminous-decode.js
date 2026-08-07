@@ -31,28 +31,58 @@ export function buildDecoderBank(ctx, sourceNode){
   const splitter = ctx.createChannelSplitter(2);
   sourceNode.connect(splitter);
 
-  function bandpass(freq, channelIndex){
+  function bandpass(freq, channelIndex, q, fftSize){
     const filter = ctx.createBiquadFilter();
     filter.type = "bandpass";
     filter.frequency.value = freq;
-    filter.Q.value = 12; // wider than a "pure" isolation filter — a narrower one is more selective but reacts more slowly to amplitude changes, which shows up as lag at faster pulse rates
+    filter.Q.value = q;
     splitter.connect(filter, channelIndex);
     const analyser = ctx.createAnalyser();
-    analyser.fftSize = 256; // smaller window, less inherent smoothing — favors catching fast changes over a perfectly stable reading
+    analyser.fftSize = fftSize;
     filter.connect(analyser);
     return { analyser, buffer: new Float32Array(analyser.fftSize) };
   }
 
+  // AudioStrobe's tone and the noise reference each stand alone with no
+  // close neighbor to bleed from, so they stay on the wider, faster-reacting
+  // filter — good time resolution matters more than extreme selectivity
+  // when there's nothing nearby to be confused with.
+  const FAST_Q = 12, FAST_FFT = 256;
+
+  // SpectraStrobe and Lumasonic's four tones sit only 500Hz apart. At the
+  // wider setting above, a strong tone can leak into its neighbor's filter
+  // and inflate a channel that isn't actually carrying much signal — this
+  // is a real, measured effect, confirmed by comparing decoded output
+  // against an independent ground-truth spectral analysis of real encoded
+  // content, not just a theoretical concern. Much narrower here trades a
+  // bit of response speed for genuine channel separation — an acceptable
+  // trade since color evolves more slowly than the on/off brightness pulse
+  // itself, which stays on the fast filter above via the "as" entry
+  // (SpectraStrobe/Lumasonic don't have a separate brightness tone the way
+  // AudioStrobe does — brightness there comes from how strongly each color
+  // channel is driven, not a distinct signal of its own).
+  const NARROW_Q = 130, NARROW_FFT = 512;
+
   const freqs = {
-    as: AUDIOSTROBE_FREQ,
-    ss_ref: SPECTRA_FREQS.ref, ss_r: SPECTRA_FREQS.r, ss_g: SPECTRA_FREQS.g, ss_b: SPECTRA_FREQS.b,
-    ls_ref: LUMASONIC_FREQS.ref, ls_r: LUMASONIC_FREQS.r, ls_g: LUMASONIC_FREQS.g, ls_b: LUMASONIC_FREQS.b,
-    noise: NOISE_REF_FREQ,
+    as: { freq: AUDIOSTROBE_FREQ, q: FAST_Q, fft: FAST_FFT },
+    noise: { freq: NOISE_REF_FREQ, q: FAST_Q, fft: FAST_FFT },
+    // The reference tones stay on the fast filter too — detecting their
+    // alternation pattern needs good time resolution, not frequency
+    // selectivity, which is a different job than separating the color
+    // tones from each other.
+    ss_ref: { freq: SPECTRA_FREQS.ref, q: FAST_Q, fft: FAST_FFT },
+    ss_r: { freq: SPECTRA_FREQS.r, q: NARROW_Q, fft: NARROW_FFT },
+    ss_g: { freq: SPECTRA_FREQS.g, q: NARROW_Q, fft: NARROW_FFT },
+    ss_b: { freq: SPECTRA_FREQS.b, q: NARROW_Q, fft: NARROW_FFT },
+    ls_ref: { freq: LUMASONIC_FREQS.ref, q: FAST_Q, fft: FAST_FFT },
+    ls_r: { freq: LUMASONIC_FREQS.r, q: NARROW_Q, fft: NARROW_FFT },
+    ls_g: { freq: LUMASONIC_FREQS.g, q: NARROW_Q, fft: NARROW_FFT },
+    ls_b: { freq: LUMASONIC_FREQS.b, q: NARROW_Q, fft: NARROW_FFT },
   };
   const bank = { left: {}, right: {}, refHistory: [] };
-  for(const [key, freq] of Object.entries(freqs)){
-    bank.left[key] = bandpass(freq, 0);
-    bank.right[key] = bandpass(freq, 1);
+  for(const [key, spec] of Object.entries(freqs)){
+    bank.left[key] = bandpass(spec.freq, 0, spec.q, spec.fft);
+    bank.right[key] = bandpass(spec.freq, 1, spec.q, spec.fft);
   }
   return bank;
 }

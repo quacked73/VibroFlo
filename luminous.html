@@ -31,6 +31,12 @@
       </div>
 
       <div class="ctrl-row">
+        <div class="ctrl-label">Screen Mode countdown<small>time to get positioned before the flicker actually starts</small></div>
+        <input type="range" id="prefCountdown" min="5" max="15" step="1" value="6">
+        <div class="ctrl-value"><span id="prefCountdownVal">6</span>s</div>
+      </div>
+
+      <div class="ctrl-row">
         <div class="ctrl-label">Eye drift<small>lets left and right slowly wander out of sync and back, instead of flashing in rigid lockstep</small></div>
         <input type="range" id="prefEyeDrift" min="0" max="100" step="1" value="40">
         <div class="ctrl-value"><span id="prefEyeDriftVal">40</span>%</div>
@@ -128,6 +134,46 @@
     Live Session Behavior settings apply automatically on Session — no need to revisit them there.
     The hardware test above requires AudioStrobe/SpectraStrobe-compatible hardware to see any
     effect, and should be silent or near-silent to most people on ordinary speakers.
+  </div>
+
+  <div class="console" style="margin-top:0;">
+    <div class="section dim-target" style="border-top:none; padding-top:8px;">
+      <div class="section-title">Play a File — Luminous Only</div>
+      <div class="callout">
+        Runs entirely on its own — no need to visit Session or Home. Pick a file with a real
+        embedded Lumasonic/AudioStrobe/SpectraStrobe signal, hit Start, and Screen Mode will
+        decode and display it directly. Nothing here touches the tone engines.
+      </div>
+      <div style="display:flex; gap:8px; margin-bottom:14px;">
+        <select id="standaloneTrackSelect" class="field-input" style="flex:1;">
+          <option value="">Loading your library…</option>
+        </select>
+      </div>
+      <div class="timer-btn" id="standaloneStartBtn" style="cursor:pointer;">Start Screen Mode</div>
+    </div>
+  </div>
+
+  <div id="screenStrobeOverlay" class="screen-strobe-overlay" style="display:none;">
+    <div class="screen-strobe-decode-status" id="screenStrobeDecodeStatus" style="display:none;"></div>
+    <div class="screen-strobe-panel" id="screenStrobeLeft"></div>
+    <div class="screen-strobe-panel" id="screenStrobeRight"></div>
+    <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none; flex-direction:column; gap:16px;">
+      <div id="screenStrobeCountdownNum"></div>
+      <div style="font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">☀ Turn your screen brightness all the way up now</div>
+      <div id="screenStrobeRotateHint" style="display:none; font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">↻ Rotate your phone to landscape for the best fit</div>
+    </div>
+    <div class="screen-strobe-controls" id="screenStrobeControls">
+      <div style="color:#fff; font-family:var(--sans); font-size:12px; margin-bottom:8px; text-align:center;">Brightness</div>
+      <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">
+      <div style="color:rgba(255,255,255,0.6); font-family:var(--sans); font-size:11px; margin-top:14px; text-align:center;">Tap anywhere to stop</div>
+    </div>
+    <div class="screen-strobe-confirm" id="screenStrobeConfirm" style="display:none;">
+      <div style="color:#fff; font-family:var(--sans); font-size:15px; margin-bottom:16px; text-align:center;">Stop Luminous?</div>
+      <div style="display:flex; gap:14px;">
+        <div class="timer-btn" id="screenStrobeConfirmStop" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Stop</div>
+        <div class="timer-btn" id="screenStrobeConfirmContinue" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Continue</div>
+      </div>
+    </div>
   </div>
 
 <script type="module" src="/src/js/luminous.js"></script>
