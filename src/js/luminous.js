@@ -20,6 +20,8 @@ renderNav("luminous");
 const prefFadeIn = document.getElementById("prefFadeIn");
 const prefCountdown = document.getElementById("prefCountdown");
 const prefCountdownVal = document.getElementById("prefCountdownVal");
+const prefSensitivity = document.getElementById("prefSensitivity");
+const prefSensitivityVal = document.getElementById("prefSensitivityVal");
 const prefFadeInVal = document.getElementById("prefFadeInVal");
 const prefEyeDrift = document.getElementById("prefEyeDrift");
 const prefEyeDriftVal = document.getElementById("prefEyeDriftVal");
@@ -35,6 +37,8 @@ const prefScreenBrightnessVal = document.getElementById("prefScreenBrightnessVal
   prefFadeInVal.textContent = prefs.fadeInSeconds;
   prefCountdown.value = prefs.countdownSeconds;
   prefCountdownVal.textContent = prefs.countdownSeconds;
+  prefSensitivity.value = prefs.sensitivity;
+  prefSensitivityVal.textContent = prefs.sensitivity;
   prefEyeDrift.value = prefs.eyeDrift;
   prefEyeDriftVal.textContent = prefs.eyeDrift;
   prefBrightnessVar.value = prefs.brightnessVar;
@@ -51,6 +55,10 @@ prefFadeIn.addEventListener("input", () => {
 prefCountdown.addEventListener("input", () => {
   prefCountdownVal.textContent = prefCountdown.value;
   saveLuminousPrefs({ countdownSeconds: parseInt(prefCountdown.value, 10) });
+});
+prefSensitivity.addEventListener("input", () => {
+  prefSensitivityVal.textContent = prefSensitivity.value;
+  saveLuminousPrefs({ sensitivity: parseInt(prefSensitivity.value, 10) });
 });
 prefEyeDrift.addEventListener("input", () => {
   prefEyeDriftVal.textContent = prefEyeDrift.value;
@@ -286,6 +294,7 @@ const ssSignalDot = document.getElementById("screenStrobeSignalDot");
 let standaloneTracks = [];
 let saCtx = null, saSource = null, saDecoderBank = null;
 let saRunning = false, saPaused = false, saRafId = null, saPhaseStart = 0, saMode = null;
+let saSensitivity = 4;
 let saCountdownTimer = null, saConfirmTimer = null, saWakeLock = null, saStopTimer = null;
 let saDecodeLastTime = 0;
 
@@ -324,6 +333,7 @@ standaloneStartBtn.addEventListener("click", () => {
 async function startStandaloneSequence(track){
   const prefs = getLuminousPrefs();
   ssBrightness.value = prefs.screenBrightnessDefault;
+  saSensitivity = prefs.sensitivity;
 
   try{ saCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }); }
   catch(e){ saCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -394,7 +404,7 @@ function beginStandaloneFlicker(safetyCapSeconds){
 }
 
 function saUpdateSignalDot(levels){
-  const strength = signalStrengthFactor(levels);
+  const strength = signalStrengthFactor(levels, saSensitivity);
   const r = Math.round(224 - (224-70)*strength);
   const g = Math.round(90 + (200-90)*strength);
   const b = 70;
@@ -408,9 +418,9 @@ function saLoop(now){
 
   const rawLevels = readDecoderLevels(saDecoderBank);
   saUpdateSignalDot(rawLevels);
-  const isLumasonic = detectLumasonic(rawLevels);
-  const isSpectra = !isLumasonic && detectSpectraStrobeReference(saDecoderBank, rawLevels);
-  const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels);
+  const isLumasonic = detectLumasonic(rawLevels, saSensitivity);
+  const isSpectra = !isLumasonic && detectSpectraStrobeReference(saDecoderBank, rawLevels, saSensitivity);
+  const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, saSensitivity);
   const levels = smoothLevels(saDecoderBank, rawLevels, dtSeconds);
   const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
 

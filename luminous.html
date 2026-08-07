@@ -37,6 +37,12 @@
       </div>
 
       <div class="ctrl-row">
+        <div class="ctrl-label">Decoder sensitivity<small>how weak a signal counts as "real" — 5 is the practical floor (most sensitive); SpectraStrobe runs more sensitive than this at every level, since it's read dimmer than a Kasina decoding the same file</small></div>
+        <input type="range" id="prefSensitivity" min="1" max="5" step="1" value="4">
+        <div class="ctrl-value"><span id="prefSensitivityVal">4</span></div>
+      </div>
+
+      <div class="ctrl-row">
         <div class="ctrl-label">Eye drift<small>lets left and right slowly wander out of sync and back, instead of flashing in rigid lockstep</small></div>
         <input type="range" id="prefEyeDrift" min="0" max="100" step="1" value="40">
         <div class="ctrl-value"><span id="prefEyeDriftVal">40</span>%</div>
@@ -113,19 +119,15 @@
         </div>
       </div>
 
-      <div class="section transport" style="margin-top:14px;">
-        <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div>
-            <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Test signal</div>
-            <div class="callout" id="lumStatus" style="margin-top:8px; display:none;"></div>
-          </div>
-          <div class="power-btn" id="lumPowerBtn">
-            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
-              <line x1="12" y1="2" x2="12" y2="12"></line>
-            </svg>
-          </div>
+      <div class="section transport" style="margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Test signal</div>
+        <div class="power-btn" id="lumPowerBtn">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+            <line x1="12" y1="2" x2="12" y2="12"></line>
+          </svg>
         </div>
+        <div class="callout" id="lumStatus" style="display:none; text-align:center;"></div>
       </div>
     </div>
   </div>

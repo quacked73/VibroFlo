@@ -12,6 +12,7 @@ const DEFAULTS = {
   fadeInSeconds: 10,       // shared by the AudioStrobe signal and the Screen Mode flicker
   screenBrightnessDefault: 70,
   countdownSeconds: 6,     // 5-15s range — time to get positioned before Screen Mode actually starts flickering
+  sensitivity: 4,          // 1 (least) to 5 (most, the practical floor) — 4 is where detection already stood before this became adjustable
 };
 
 export function getLuminousPrefs(){

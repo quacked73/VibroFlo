@@ -25,7 +25,29 @@ const LUMASONIC_FREQS = { ref: 22500, r: 21000, g: 19500, b: 18000 };
 const SPECTRA_FREQS = { ref: 18200, r: 18700, g: 19200, b: 19700 };
 const AUDIOSTROBE_FREQ = 19200;
 const NOISE_REF_FREQ = 16000; // clearly below every codec's lowest tone (Lumasonic's blue at 18000), used as a live noise-floor baseline instead of one fixed guessed number
-const MIN_SIGNAL_RATIO = 1.5; // target band must exceed the noise baseline by this multiple to count as "real," not just ambient hiss — lowered from 2.5 so onset tracks closer to when real hardware (which starts responding earlier, at lower signal levels) begins reacting
+
+// A 1-5 sensitivity scale exposed as a Live Session Behavior setting on the
+// Luminous page. Level 4 is where detection already stood before this scale
+// existed (1.5x the noise floor); level 5 is the practical floor — the
+// lowest ratio worth going before ordinary noise starts reading as signal.
+// Levels 1-3 extend the range the other direction for anyone who needs it
+// less sensitive, using the actual value this used before it was lowered
+// for level 1, as a real reference point rather than an arbitrary number.
+const SENSITIVITY_RATIOS = { 1: 2.5, 2: 2.0, 3: 1.75, 4: 1.5, 5: 1.2 };
+const DEFAULT_SENSITIVITY = 4;
+
+function ratioForLevel(level){
+  return SENSITIVITY_RATIOS[level] ?? SENSITIVITY_RATIOS[DEFAULT_SENSITIVITY];
+}
+
+// SpectraStrobe specifically reads dimmer and less responsive than a
+// MindPlace Kasina decoding the same real file side by side, even once
+// genuinely detected — a real, reported gap, not a guess. This gives it a
+// meaningfully lower threshold than the shared scale at any given level,
+// so it registers real signal earlier/more readily than the other codecs do.
+function spectraRatioForLevel(level){
+  return ratioForLevel(level) * 0.75;
+}
 
 export function buildDecoderBank(ctx, sourceNode){
   const splitter = ctx.createChannelSplitter(2);
@@ -141,7 +163,7 @@ function noiseBaseline(levels){
 // frequencies (the two reference tones plus plain AudioStrobe) since any of
 // them lighting up means something real is present, before drilling into
 // which specific codec it is.
-export function signalStrengthFactor(levels){
+export function signalStrengthFactor(levels, sensitivityLevel){
   const baseline = noiseBaseline(levels);
   const strongest = Math.max(
     levels.left.ls_ref, levels.right.ls_ref,
@@ -149,14 +171,15 @@ export function signalStrengthFactor(levels){
     levels.left.as, levels.right.as
   );
   const ratio = strongest / baseline;
-  return Math.max(0, Math.min(1, (ratio - 1) / (MIN_SIGNAL_RATIO - 1)));
+  const minRatio = ratioForLevel(sensitivityLevel);
+  return Math.max(0, Math.min(1, (ratio - 1) / (minRatio - 1)));
 }
 
 // Lumasonic's reference tone doesn't overlap with anything else — a clean,
 // unambiguous "this is Lumasonic" check, no pattern-matching needed.
-export function detectLumasonic(levels){
+export function detectLumasonic(levels, sensitivityLevel){
   const baseline = noiseBaseline(levels);
-  return Math.max(levels.left.ls_ref, levels.right.ls_ref) > baseline * MIN_SIGNAL_RATIO;
+  return Math.max(levels.left.ls_ref, levels.right.ls_ref) > baseline * ratioForLevel(sensitivityLevel);
 }
 
 // SpectraStrobe's reference tone alternates hard left/right at 20 times a
@@ -167,7 +190,7 @@ export function detectLumasonic(levels){
 // pattern, genuine 20Hz alternation does.
 const REF_HISTORY_LEN = 12;
 
-export function detectSpectraStrobeReference(bank, levels){
+export function detectSpectraStrobeReference(bank, levels, sensitivityLevel){
   const balance = levels.left.ss_ref - levels.right.ss_ref;
   bank.refHistory.push(balance);
   if(bank.refHistory.length > REF_HISTORY_LEN) bank.refHistory.shift();
@@ -177,13 +200,13 @@ export function detectSpectraStrobeReference(bank, levels){
     if((bank.refHistory[i] > 0) !== (bank.refHistory[i-1] > 0)) flips++;
   }
   const baseline = noiseBaseline(levels);
-  const strongEnough = Math.max(...bank.refHistory.map(Math.abs)) > baseline * MIN_SIGNAL_RATIO;
+  const strongEnough = Math.max(...bank.refHistory.map(Math.abs)) > baseline * spectraRatioForLevel(sensitivityLevel);
   return strongEnough && flips >= REF_HISTORY_LEN * 0.4;
 }
 
-export function audioStrobeSignalPresent(levels){
+export function audioStrobeSignalPresent(levels, sensitivityLevel){
   const baseline = noiseBaseline(levels);
-  return Math.max(levels.left.as, levels.right.as) > baseline * MIN_SIGNAL_RATIO;
+  return Math.max(levels.left.as, levels.right.as) > baseline * ratioForLevel(sensitivityLevel);
 }
 
 // Confirmed frequency-to-channel assignment from the source SDK — note the
@@ -195,7 +218,10 @@ export function levelsToColorLumasonic(sideLevels){
   return { r: scale(sideLevels.ls_r), g: scale(sideLevels.ls_g), b: scale(sideLevels.ls_b) };
 }
 
+// A meaningfully higher gain than Lumasonic's — same reasoning as the
+// detection boost above, addressing SpectraStrobe reading dimmer than the
+// Kasina's own display even once a real signal is genuinely present.
 export function levelsToColorSpectra(sideLevels){
-  const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 1800)));
+  const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 2600)));
   return { r: scale(sideLevels.ss_r), g: scale(sideLevels.ss_g), b: scale(sideLevels.ss_b) };
 }

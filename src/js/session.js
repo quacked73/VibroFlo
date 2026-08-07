@@ -626,7 +626,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // toast — red at no signal, green at a strong one, smoothly interpolated
   // in between so it reads at a glance without needing to read anything.
   function updateSignalDot(levels){
-    const strength = signalStrengthFactor(levels); // 0 (no signal) to 1 (strong)
+    const strength = signalStrengthFactor(levels, luminousPrefs.sensitivity); // 0 (no signal) to 1 (strong)
     const r = Math.round(224 - (224-70)*strength);
     const g = Math.round(90 + (200-90)*strength);
     const b = 70;
@@ -699,9 +699,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     // with anything else these codecs use, so it's the cleanest possible
     // discriminator — no risk of a false read from SpectraStrobe/AudioStrobe
     // content bleeding into it.
-    const isLumasonic = detectLumasonic(rawLevels);
-    const isSpectra = !isLumasonic && detectSpectraStrobeReference(luminousDecoderBank, rawLevels);
-    const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels);
+    const isLumasonic = detectLumasonic(rawLevels, luminousPrefs.sensitivity);
+    const isSpectra = !isLumasonic && detectSpectraStrobeReference(luminousDecoderBank, rawLevels, luminousPrefs.sensitivity);
+    const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, luminousPrefs.sensitivity);
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
 
     if(isLumasonic){
