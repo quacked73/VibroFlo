@@ -293,6 +293,7 @@
   /* pill selectors (noise type) */
   .pillrow{
     display:flex;
+    flex-wrap:wrap;
     gap:6px;
   }
   .pill{
@@ -475,19 +476,33 @@
   border:1px solid var(--line);
   border-radius:999px;
   padding:4px;
+  max-width:100%;
+  min-width:0;
+  overflow-x:auto;
+  overflow-y:hidden;
+  flex-wrap:nowrap;
+  scrollbar-width:none; /* Firefox */
+  -webkit-overflow-scrolling:touch;
 }
+.site-nav-links::-webkit-scrollbar{ display:none; } /* Chrome/Safari */
 .site-nav-links a{
   text-decoration:none;
   color:var(--muted);
   font-family:var(--sans); font-weight:600; font-size:12.5px;
   padding:7px 14px;
   border-radius:999px;
+  white-space:nowrap;
+  flex:0 0 auto;
 }
 .site-nav-links a.active{
   color:var(--green);
   background:#372a56;
 }
 .site-nav-links a:hover:not(.active){ color:var(--text); }
+
+@media (max-width: 420px){
+  .site-nav-links a{ padding:7px 10px; font-size:12px; }
+}
 
 /* ---------- Home page ---------- */
 .hero-eyebrow{
