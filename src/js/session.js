@@ -14,7 +14,7 @@ import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
-import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -703,19 +703,20 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const isSpectra = !isLumasonic && detectSpectraStrobeReference(luminousDecoderBank, rawLevels, luminousPrefs.sensitivity);
     const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, luminousPrefs.sensitivity);
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
+    const baseline = noiseBaseline(rawLevels);
 
     if(isLumasonic){
       screenStrobeCurrentMode = "decode-lumasonic";
-      const leftColor = levelsToColorLumasonic(levels.left);
-      const rightColor = levelsToColorLumasonic(levels.right);
+      const leftColor = levelsToColorLumasonic(levels.left, baseline);
+      const rightColor = levelsToColorLumasonic(levels.right, baseline);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
       screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
     } else if(isSpectra){
       screenStrobeCurrentMode = "decode-color";
-      const leftColor = levelsToColorSpectra(levels.left);
-      const rightColor = levelsToColorSpectra(levels.right);
+      const leftColor = levelsToColorSpectra(levels.left, baseline);
+      const rightColor = levelsToColorSpectra(levels.right, baseline);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       // Deliberately no fadeInFactor here — decoding a real signal should
@@ -729,8 +730,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
       }
-      screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
-      screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
+      screenStrobeLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
+      screenStrobeRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
     } else {
       // A flagged track with no signal *right now* isn't necessarily
       // broken — amplitude is brightness, so a genuinely quiet passage

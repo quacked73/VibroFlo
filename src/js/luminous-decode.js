@@ -152,8 +152,22 @@ export function smoothLevels(bank, rawLevels, dtSeconds){
 // volume/hardware differences shift the absolute level further. Comparing
 // against a nearby quiet frequency, rather than an absolute threshold,
 // adapts to whatever the actual playback conditions happen to be.
-function noiseBaseline(levels){
+export function noiseBaseline(levels){
   return Math.max(0.0008, (levels.left.noise + levels.right.noise) / 2);
+}
+
+// How many times above the noise floor counts as "fully bright." Kept
+// deliberately lower than the detection thresholds above (1.2-2.5x) —
+// something that's clearly registering as real signal should also look
+// clearly bright, not require several more multiples of margin on top of
+// what already counted as detected. A fixed absolute gain couldn't adapt to
+// how loud any given track's own encoding happened to be; this scales with
+// it instead, the same idea already used for detection.
+const BRIGHTNESS_TARGET_RATIO = 3.5;
+
+export function adaptiveBrightness(level, baseline){
+  const ratio = level / baseline;
+  return Math.max(0, Math.min(1, (ratio - 1) / (BRIGHTNESS_TARGET_RATIO - 1)));
 }
 
 // A continuous 0-1 value for a live strength indicator, rather than the
@@ -209,19 +223,27 @@ export function audioStrobeSignalPresent(levels, sensitivityLevel){
   return Math.max(levels.left.as, levels.right.as) > baseline * ratioForLevel(sensitivityLevel);
 }
 
+// Scales all three channels by the same factor, based on how far the
+// strongest one sits above the noise floor — this is what keeps hue intact
+// (a channel that's genuinely twice as strong as another stays twice as
+// strong in the output) while still using the adaptive brightness curve
+// above, rather than three independently-maxing channels that would wash
+// out any real color balance into white.
+function adaptiveColorScale(rLevel, gLevel, bLevel, baseline){
+  const maxLevel = Math.max(rLevel, gLevel, bLevel);
+  const confidence = adaptiveBrightness(maxLevel, baseline);
+  const scale = (v) => Math.round(255 * confidence * (maxLevel > 0 ? v / maxLevel : 0));
+  return { r: scale(rLevel), g: scale(gLevel), b: scale(bLevel) };
+}
+
 // Confirmed frequency-to-channel assignment from the source SDK — note the
 // order is genuinely different between the two codecs (Lumasonic runs
 // high-to-low R→G→B, SpectraStrobe runs low-to-high), not a copy-paste
 // inconsistency.
-export function levelsToColorLumasonic(sideLevels){
-  const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 1800)));
-  return { r: scale(sideLevels.ls_r), g: scale(sideLevels.ls_g), b: scale(sideLevels.ls_b) };
+export function levelsToColorLumasonic(sideLevels, baseline){
+  return adaptiveColorScale(sideLevels.ls_r, sideLevels.ls_g, sideLevels.ls_b, baseline);
 }
 
-// A meaningfully higher gain than Lumasonic's — same reasoning as the
-// detection boost above, addressing SpectraStrobe reading dimmer than the
-// Kasina's own display even once a real signal is genuinely present.
-export function levelsToColorSpectra(sideLevels){
-  const scale = (v) => Math.max(0, Math.min(255, Math.round(v * 2600)));
-  return { r: scale(sideLevels.ss_r), g: scale(sideLevels.ss_g), b: scale(sideLevels.ss_b) };
+export function levelsToColorSpectra(sideLevels, baseline){
+  return adaptiveColorScale(sideLevels.ss_r, sideLevels.ss_g, sideLevels.ss_b, baseline);
 }

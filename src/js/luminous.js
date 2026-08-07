@@ -447,7 +447,7 @@ import { loadTrackList } from "./ambient-library.js";
 import {
   buildDecoderBank, readDecoderLevels, smoothLevels,
   audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic,
-  levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor,
+  levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline,
 } from "./luminous-decode.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
 
@@ -599,25 +599,26 @@ function saLoop(now){
   const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, saSensitivity);
   const levels = smoothLevels(saDecoderBank, rawLevels, dtSeconds);
   const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
+  const baseline = noiseBaseline(rawLevels);
 
   if(isLumasonic){
     saMode = "lumasonic";
-    const l = levelsToColorLumasonic(levels.left), r = levelsToColorLumasonic(levels.right);
+    const l = levelsToColorLumasonic(levels.left, baseline), r = levelsToColorLumasonic(levels.right, baseline);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(isSpectra){
     saMode = "spectra";
-    const l = levelsToColorSpectra(levels.left), r = levelsToColorSpectra(levels.right);
+    const l = levelsToColorSpectra(levels.left, baseline), r = levelsToColorSpectra(levels.right, baseline);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(hasAudioStrobe){
     if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
-    ssLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
-    ssRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
+    ssLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
+    ssRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
   } else {
     // No signal right now — a genuinely quiet passage is real, authored
     // data, not an absence to paper over with a fabricated pattern. Go dark.
