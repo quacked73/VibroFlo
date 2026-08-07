@@ -14,7 +14,7 @@ import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
-import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -601,7 +601,6 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   let screenStrobeConfirmTimer = null;
 
   function beginScreenStrobeFlicker(){
-    screenStrobeControls.style.display = "none";
     screenStrobeRunning = true;
     screenStrobePhaseStart = performance.now();
     screenStrobeCurrentMode = null;
@@ -620,14 +619,18 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   // Hoisted to module scope (not a closure inside beginScreenStrobeFlicker)
   // specifically so resumeScreenStrobeFlicker() can restart the exact same
   // loop after a pause, not just the very first start.
-  const screenStrobeDecodeStatus = document.getElementById("screenStrobeDecodeStatus");
-  let screenStrobeCurrentMode = null; // "decode-color" | "decode-brightness" | "synthetic" — tracked so the status note only shows on an actual change, not every frame
+  const screenStrobeSignalDot = document.getElementById("screenStrobeSignalDot");
+  let screenStrobeCurrentMode = null; // "decode-color" | "decode-brightness" | "synthetic" — tracked so mode-dependent styling only updates on an actual change, not every frame
 
-  function showDecodeStatus(text){
-    screenStrobeDecodeStatus.textContent = text;
-    screenStrobeDecodeStatus.style.opacity = "1";
-    screenStrobeDecodeStatus.style.display = "block";
-    setTimeout(() => { screenStrobeDecodeStatus.style.opacity = "0"; }, 3500);
+  // A small persistent dot next to the brightness slider instead of a text
+  // toast — red at no signal, green at a strong one, smoothly interpolated
+  // in between so it reads at a glance without needing to read anything.
+  function updateSignalDot(levels){
+    const strength = signalStrengthFactor(levels); // 0 (no signal) to 1 (strong)
+    const r = Math.round(224 - (224-70)*strength);
+    const g = Math.round(90 + (200-90)*strength);
+    const b = 70;
+    screenStrobeSignalDot.style.background = `rgb(${r}, ${g}, ${b})`;
   }
 
   function currentAmbientTrack(){
@@ -689,6 +692,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     luminousDecodeLastTime = now;
 
     const rawLevels = readDecoderLevels(luminousDecoderBank);
+    updateSignalDot(rawLevels);
     // Detection stays on the raw signal — smoothing is for how it looks
     // rendered, not for deciding whether a real signal is present.
     // Lumasonic checked first: its reference tone (22500Hz) doesn't overlap
@@ -701,10 +705,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
 
     if(isLumasonic){
-      if(screenStrobeCurrentMode !== "decode-lumasonic"){
-        screenStrobeCurrentMode = "decode-lumasonic";
-        showDecodeStatus("Lumasonic signal detected — showing decoded color");
-      }
+      screenStrobeCurrentMode = "decode-lumasonic";
       const leftColor = levelsToColorLumasonic(levels.left);
       const rightColor = levelsToColorLumasonic(levels.right);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
@@ -712,10 +713,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
       screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
     } else if(isSpectra){
-      if(screenStrobeCurrentMode !== "decode-color"){
-        screenStrobeCurrentMode = "decode-color";
-        showDecodeStatus("SpectraStrobe signal detected — showing decoded color");
-      }
+      screenStrobeCurrentMode = "decode-color";
       const leftColor = levelsToColorSpectra(levels.left);
       const rightColor = levelsToColorSpectra(levels.right);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
@@ -730,7 +728,6 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeCurrentMode = "decode-brightness";
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
-        showDecodeStatus("AudioStrobe signal detected — showing decoded brightness");
       }
       screenStrobeLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
       screenStrobeRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
@@ -745,7 +742,6 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeCurrentMode = "decode-silent";
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
-        showDecodeStatus("No signal right now — could be a quiet passage in the track, or it may not have real embedded content");
       }
       screenStrobeLeft.style.opacity = "0";
       screenStrobeRight.style.opacity = "0";

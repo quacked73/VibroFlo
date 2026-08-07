@@ -144,17 +144,24 @@
         embedded Lumasonic/AudioStrobe/SpectraStrobe signal, hit Start, and Screen Mode will
         decode and display it directly. Nothing here touches the tone engines.
       </div>
-      <div style="display:flex; gap:8px; margin-bottom:14px;">
-        <select id="standaloneTrackSelect" class="field-input" style="flex:1;">
+      <div style="margin-bottom:14px;">
+        <select id="standaloneTrackSelect" class="field-input" style="width:100%;">
           <option value="">Loading your library…</option>
         </select>
       </div>
-      <div class="timer-btn" id="standaloneStartBtn" style="cursor:pointer;">Start Screen Mode</div>
+      <div class="section transport" style="margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+        <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Start Screen Mode</div>
+        <div class="power-btn" id="standaloneStartBtn">
+          <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+            <line x1="12" y1="2" x2="12" y2="12"></line>
+          </svg>
+        </div>
+      </div>
     </div>
   </div>
 
   <div id="screenStrobeOverlay" class="screen-strobe-overlay" style="display:none;">
-    <div class="screen-strobe-decode-status" id="screenStrobeDecodeStatus" style="display:none;"></div>
     <div class="screen-strobe-panel" id="screenStrobeLeft"></div>
     <div class="screen-strobe-panel" id="screenStrobeRight"></div>
     <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none; flex-direction:column; gap:16px;">
@@ -163,7 +170,10 @@
       <div id="screenStrobeRotateHint" style="display:none; font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">↻ Rotate your phone to landscape for the best fit</div>
     </div>
     <div class="screen-strobe-controls" id="screenStrobeControls">
-      <div style="color:#fff; font-family:var(--sans); font-size:12px; margin-bottom:8px; text-align:center;">Brightness</div>
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px;">
+        <span style="color:#fff; font-family:var(--sans); font-size:12px;">Brightness</span>
+        <span id="screenStrobeSignalDot" class="signal-dot" title="Signal strength"></span>
+      </div>
       <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">
       <div style="color:rgba(255,255,255,0.6); font-family:var(--sans); font-size:11px; margin-top:14px; text-align:center;">Tap anywhere to stop</div>
     </div>

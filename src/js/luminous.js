@@ -263,7 +263,7 @@ import { loadTrackList } from "./ambient-library.js";
 import {
   buildDecoderBank, readDecoderLevels, smoothLevels,
   audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic,
-  levelsToColorSpectra, levelsToColorLumasonic,
+  levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor,
 } from "./luminous-decode.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
 
@@ -281,7 +281,7 @@ const ssBrightness = document.getElementById("screenStrobeBrightness");
 const ssConfirm = document.getElementById("screenStrobeConfirm");
 const ssConfirmStop = document.getElementById("screenStrobeConfirmStop");
 const ssConfirmContinue = document.getElementById("screenStrobeConfirmContinue");
-const ssDecodeStatus = document.getElementById("screenStrobeDecodeStatus");
+const ssSignalDot = document.getElementById("screenStrobeSignalDot");
 
 let standaloneTracks = [];
 let saCtx = null, saSource = null, saDecoderBank = null;
@@ -393,11 +393,12 @@ function beginStandaloneFlicker(safetyCapSeconds){
   saRafId = requestAnimationFrame(saLoop);
 }
 
-function saShowStatus(text){
-  ssDecodeStatus.textContent = text;
-  ssDecodeStatus.style.opacity = "1";
-  ssDecodeStatus.style.display = "block";
-  setTimeout(() => { ssDecodeStatus.style.opacity = "0"; }, 3500);
+function saUpdateSignalDot(levels){
+  const strength = signalStrengthFactor(levels);
+  const r = Math.round(224 - (224-70)*strength);
+  const g = Math.round(90 + (200-90)*strength);
+  const b = 70;
+  ssSignalDot.style.background = `rgb(${r}, ${g}, ${b})`;
 }
 
 function saLoop(now){
@@ -406,6 +407,7 @@ function saLoop(now){
   saDecodeLastTime = now;
 
   const rawLevels = readDecoderLevels(saDecoderBank);
+  saUpdateSignalDot(rawLevels);
   const isLumasonic = detectLumasonic(rawLevels);
   const isSpectra = !isLumasonic && detectSpectraStrobeReference(saDecoderBank, rawLevels);
   const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels);
@@ -413,27 +415,27 @@ function saLoop(now){
   const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
 
   if(isLumasonic){
-    if(saMode !== "lumasonic"){ saMode = "lumasonic"; saShowStatus("Lumasonic signal detected — showing decoded color"); }
+    saMode = "lumasonic";
     const l = levelsToColorLumasonic(levels.left), r = levelsToColorLumasonic(levels.right);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(isSpectra){
-    if(saMode !== "spectra"){ saMode = "spectra"; saShowStatus("SpectraStrobe signal detected — showing decoded color"); }
+    saMode = "spectra";
     const l = levelsToColorSpectra(levels.left), r = levelsToColorSpectra(levels.right);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(hasAudioStrobe){
-    if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; saShowStatus("AudioStrobe signal detected — showing decoded brightness"); }
+    if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
     ssLeft.style.opacity = (levels.left.as * 6 * brightnessCeiling).toFixed(3);
     ssRight.style.opacity = (levels.right.as * 6 * brightnessCeiling).toFixed(3);
   } else {
     // No signal right now — a genuinely quiet passage is real, authored
     // data, not an absence to paper over with a fabricated pattern. Go dark.
-    if(saMode !== "silent"){ saMode = "silent"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; saShowStatus("No signal right now — could be a quiet passage, or this track may not have real embedded content"); }
+    if(saMode !== "silent"){ saMode = "silent"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
     ssLeft.style.opacity = "0";
     ssRight.style.opacity = "0";
   }

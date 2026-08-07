@@ -25,7 +25,7 @@ const LUMASONIC_FREQS = { ref: 22500, r: 21000, g: 19500, b: 18000 };
 const SPECTRA_FREQS = { ref: 18200, r: 18700, g: 19200, b: 19700 };
 const AUDIOSTROBE_FREQ = 19200;
 const NOISE_REF_FREQ = 16000; // clearly below every codec's lowest tone (Lumasonic's blue at 18000), used as a live noise-floor baseline instead of one fixed guessed number
-const MIN_SIGNAL_RATIO = 2.5; // target band must exceed the noise baseline by this multiple to count as "real," not just ambient hiss
+const MIN_SIGNAL_RATIO = 1.5; // target band must exceed the noise baseline by this multiple to count as "real," not just ambient hiss — lowered from 2.5 so onset tracks closer to when real hardware (which starts responding earlier, at lower signal levels) begins reacting
 
 export function buildDecoderBank(ctx, sourceNode){
   const splitter = ctx.createChannelSplitter(2);
@@ -132,6 +132,24 @@ export function smoothLevels(bank, rawLevels, dtSeconds){
 // adapts to whatever the actual playback conditions happen to be.
 function noiseBaseline(levels){
   return Math.max(0.0008, (levels.left.noise + levels.right.noise) / 2);
+}
+
+// A continuous 0-1 value for a live strength indicator, rather than the
+// binary detected/not-detected used for the actual codec logic above. 0
+// means at or below the noise floor, 1 means at or above the detection
+// threshold — checks the three "is anything here at all" candidate
+// frequencies (the two reference tones plus plain AudioStrobe) since any of
+// them lighting up means something real is present, before drilling into
+// which specific codec it is.
+export function signalStrengthFactor(levels){
+  const baseline = noiseBaseline(levels);
+  const strongest = Math.max(
+    levels.left.ls_ref, levels.right.ls_ref,
+    levels.left.ss_ref, levels.right.ss_ref,
+    levels.left.as, levels.right.as
+  );
+  const ratio = strongest / baseline;
+  return Math.max(0, Math.min(1, (ratio - 1) / (MIN_SIGNAL_RATIO - 1)));
 }
 
 // Lumasonic's reference tone doesn't overlap with anything else — a clean,
