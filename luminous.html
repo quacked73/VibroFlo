@@ -89,41 +89,77 @@
       <div class="section dim-target" style="border-top:none; padding-top:8px;">
         <div class="section-title">Test Your Hardware</div>
         <div class="callout">
-          Some light-and-sound machines — like the MindPlace Kasina — read a tone hidden above normal
-          hearing range to flash their LEDs in sync with audio (<b>AudioStrobe</b>). Use this to confirm
-          your specific device and cables actually reproduce that signal, separate from a real session.
+          Some light-and-sound machines — like the MindPlace Kasina — read tones hidden above normal
+          hearing range to flash their LEDs in sync with audio. <b>AudioStrobe</b> uses one tone for
+          brightness only; <b>SpectraStrobe</b> uses four for independent color. Use this to confirm
+          your specific device and cables actually reproduce whichever one you're testing.
         </div>
 
-        <div class="ctrl-row">
-          <div class="ctrl-label">Carrier frequency<small>19200Hz is the AudioStrobe standard — adjust only to test what your device can actually reproduce</small></div>
-          <input type="range" id="lumFreq" min="15000" max="20000" step="100" value="19200">
-          <div class="ctrl-value"><span id="lumFreqVal">19200</span>Hz</div>
+        <div class="pill-ctrl">
+          <div class="pillrow" id="lumModeRow">
+            <div class="pill active" data-mode="audiostrobe">AudioStrobe</div>
+            <div class="pill" data-mode="spectrastrobe">SpectraStrobe</div>
+          </div>
         </div>
 
-        <div class="ctrl-row">
-          <div class="ctrl-label">Pulse rate<small>how fast the light flashes</small></div>
-          <input type="range" id="lumRate" min="0.5" max="20" step="0.1" value="10">
-          <div class="ctrl-value"><span id="lumRateVal">10.0</span>Hz</div>
+        <div id="asControlsWrap">
+          <div class="ctrl-row">
+            <div class="ctrl-label">Carrier frequency<small>19200Hz is the AudioStrobe standard — adjust only to test what your device can actually reproduce</small></div>
+            <input type="range" id="lumFreq" min="15000" max="20000" step="100" value="19200">
+            <div class="ctrl-value"><span id="lumFreqVal">19200</span>Hz</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Pulse rate<small>how fast the light flashes</small></div>
+            <input type="range" id="lumRate" min="0.5" max="20" step="0.1" value="10">
+            <div class="ctrl-value"><span id="lumRateVal">10.0</span>Hz</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Gate depth<small>100% = full on/off flash, lower = dimmer pulse instead of a hard cut</small></div>
+            <input type="range" id="lumDepth" min="0" max="100" step="1" value="100">
+            <div class="ctrl-value"><span id="lumDepthVal">100</span>%</div>
+          </div>
+
+          <div class="pill-ctrl">
+            <div class="ctrl-label" style="margin-bottom:8px;">Gate shape</div>
+            <div class="pillrow" id="lumShapeRow">
+              <div class="pill active" data-shape="sine">Smooth</div>
+              <div class="pill" data-shape="square">Sharp</div>
+            </div>
+          </div>
         </div>
 
-        <div class="ctrl-row">
-          <div class="ctrl-label">Gate depth<small>100% = full on/off flash, lower = dimmer pulse instead of a hard cut</small></div>
-          <input type="range" id="lumDepth" min="0" max="100" step="1" value="100">
-          <div class="ctrl-value"><span id="lumDepthVal">100</span>%</div>
+        <div id="ssControlsWrap" style="display:none;">
+          <div class="ctrl-row">
+            <div class="ctrl-label">Red<small>18700Hz — set to 0 to test green/blue in isolation</small></div>
+            <input type="range" id="ssRed" min="0" max="100" step="1" value="100">
+            <div class="ctrl-value"><span id="ssRedVal">100</span>%</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Green<small>19200Hz — set to 0 to test red/blue in isolation</small></div>
+            <input type="range" id="ssGreen" min="0" max="100" step="1" value="0">
+            <div class="ctrl-value"><span id="ssGreenVal">0</span>%</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Blue<small>19700Hz — set to 0 to test red/green in isolation</small></div>
+            <input type="range" id="ssBlue" min="0" max="100" step="1" value="0">
+            <div class="ctrl-value"><span id="ssBlueVal">0</span>%</div>
+          </div>
+
+          <div class="callout" style="font-size:11.5px;">
+            The 18200Hz reference tone that marks this as SpectraStrobe (rather than AudioStrobe) is
+            generated automatically in the background, alternating left/right at the fixed 20Hz the
+            format requires — not something to adjust, since any other rate wouldn't be a valid signal.
+          </div>
         </div>
 
         <div class="ctrl-row">
           <div class="ctrl-label">Signal strength<small>the carrier tone's own volume — needs to be strong enough for the decoder to catch it reliably</small></div>
           <input type="range" id="lumStrength" min="10" max="100" step="1" value="80">
           <div class="ctrl-value"><span id="lumStrengthVal">80</span>%</div>
-        </div>
-
-        <div class="pill-ctrl">
-          <div class="ctrl-label" style="margin-bottom:8px;">Gate shape</div>
-          <div class="pillrow" id="lumShapeRow">
-            <div class="pill active" data-shape="sine">Smooth</div>
-            <div class="pill" data-shape="square">Sharp</div>
-          </div>
         </div>
 
         <div class="pill-ctrl">

@@ -94,10 +94,14 @@ prefScreenBrightness.addEventListener("input", () => {
   saveLuminousPrefs({ screenBrightnessDefault: parseInt(prefScreenBrightness.value, 10) });
 });
 
-// ---------- Test Your Hardware (unchanged from before) ----------
+// ---------- Test Your Hardware ----------
 
 const powerBtn = document.getElementById("lumPowerBtn");
 const statusEl = document.getElementById("lumStatus");
+
+const modeRow = document.getElementById("lumModeRow");
+const asControlsWrap = document.getElementById("asControlsWrap");
+const ssControlsWrap = document.getElementById("ssControlsWrap");
 
 const freqSlider = document.getElementById("lumFreq");
 const freqVal = document.getElementById("lumFreqVal");
@@ -110,13 +114,27 @@ const strengthVal = document.getElementById("lumStrengthVal");
 const shapeRow = document.getElementById("lumShapeRow");
 const channelRow = document.getElementById("lumChannelRow");
 
+const redSlider = document.getElementById("ssRed");
+const redVal = document.getElementById("ssRedVal");
+const greenSlider = document.getElementById("ssGreen");
+const greenVal = document.getElementById("ssGreenVal");
+const blueSlider = document.getElementById("ssBlue");
+const blueVal = document.getElementById("ssBlueVal");
+
+const SS_FREQS = { ref: 18200, r: 18700, g: 19200, b: 19700 };
+const SS_PAN_RATE = 20; // Hz — fixed by the SpectraStrobe spec, not adjustable
+
 const state = {
+  testMode: "audiostrobe", // "audiostrobe" | "spectrastrobe"
   freq: 19200,
   rate: 10,
   depth: 100,
   strength: 80,
   shape: "sine",
   channel: "both",
+  red: 100,
+  green: 0,
+  blue: 0,
 };
 
 let ctx = null;
@@ -126,6 +144,21 @@ let running = false;
 // "right only" can genuinely silence the other side rather than just panning
 // a shared signal.
 let left = null, right = null;
+
+// SpectraStrobe's four-tone equivalent — a chain per side, plus one shared
+// 20Hz pan oscillator both sides read from (one directly, one inverted),
+// which is what produces the required alternating reference tone.
+let genSsLeft = null, genSsRight = null, genSsPanLfo = null, genSsPanLfoInverted = null, genSsPanInvertGain = null;
+
+modeRow.addEventListener("click", (e) => {
+  const pill = e.target.closest(".pill");
+  if(!pill || running) return; // don't allow switching mid-signal — avoids juggling two live graphs at once
+  [...modeRow.children].forEach(c => c.classList.remove("active"));
+  pill.classList.add("active");
+  state.testMode = pill.dataset.mode;
+  asControlsWrap.style.display = state.testMode === "audiostrobe" ? "block" : "none";
+  ssControlsWrap.style.display = state.testMode === "spectrastrobe" ? "block" : "none";
+});
 
 function buildChain(pan){
   const carrier = ctx.createOscillator();
@@ -181,14 +214,105 @@ function applyChannelGains(){
   right.strength.gain.setTargetAtTime(rightOn ? state.strength/100 : 0, ctx.currentTime, 0.05);
 }
 
+// SpectraStrobe: reference tone alternates hard left/right at a fixed 20Hz —
+// both sides read from ONE shared oscillator so they're always exactly
+// out of phase with each other, one directly and one through a gain of -1
+// (which flips a sine 180°). Same "LFO depth + DC offset summed into a
+// gain" gating technique already used for AudioStrobe above, just fed by
+// the shared/inverted pan source instead of each side having its own LFO.
+// Red/green/blue are steady tones — SpectraStrobe encodes color as sustained
+// amplitude, not a pulse, so these don't need any gating at all.
+function buildSpectraChain(pan, panSource){
+  const refCarrier = ctx.createOscillator();
+  refCarrier.type = "sine";
+  refCarrier.frequency.value = SS_FREQS.ref;
+  const refGate = ctx.createGain();
+  refGate.gain.value = 0; // baseline comes entirely from refLfoOffset — must stay 0 or it double-counts
+  const refLfoDepth = ctx.createGain();
+  refLfoDepth.gain.value = 0.5;
+  const refLfoOffset = ctx.createConstantSource();
+  refLfoOffset.offset.value = 0.5;
+  panSource.connect(refLfoDepth);
+  refLfoDepth.connect(refGate.gain);
+  refLfoOffset.connect(refGate.gain);
+
+  const rCarrier = ctx.createOscillator(); rCarrier.type = "sine"; rCarrier.frequency.value = SS_FREQS.r;
+  const rGain = ctx.createGain(); rGain.gain.value = state.red/100;
+  const gCarrier = ctx.createOscillator(); gCarrier.type = "sine"; gCarrier.frequency.value = SS_FREQS.g;
+  const gGain = ctx.createGain(); gGain.gain.value = state.green/100;
+  const bCarrier = ctx.createOscillator(); bCarrier.type = "sine"; bCarrier.frequency.value = SS_FREQS.b;
+  const bGain = ctx.createGain(); bGain.gain.value = state.blue/100;
+
+  const mix = ctx.createGain(); // sums all four tones before the shared strength/pan stage
+  refCarrier.connect(refGate); refGate.connect(mix);
+  rCarrier.connect(rGain); rGain.connect(mix);
+  gCarrier.connect(gGain); gGain.connect(mix);
+  bCarrier.connect(bGain); bGain.connect(mix);
+
+  const strength = ctx.createGain();
+  strength.gain.value = state.strength/100;
+  const panner = ctx.createStereoPanner();
+  panner.pan.value = pan;
+  mix.connect(strength);
+  strength.connect(panner);
+  panner.connect(ctx.destination);
+
+  refCarrier.start(); refLfoOffset.start();
+  rCarrier.start(); gCarrier.start(); bCarrier.start();
+
+  return { refCarrier, refGate, refLfoDepth, refLfoOffset, rCarrier, rGain, gCarrier, gGain, bCarrier, bGain, mix, strength, panner };
+}
+
+function stopSpectraChain(chain){
+  if(!chain) return;
+  try{ chain.refCarrier.stop(); }catch(e){}
+  try{ chain.refLfoOffset.stop(); }catch(e){}
+  try{ chain.rCarrier.stop(); }catch(e){}
+  try{ chain.gCarrier.stop(); }catch(e){}
+  try{ chain.bCarrier.stop(); }catch(e){}
+}
+
+function startSpectraStrobe(){
+  genSsPanLfo = ctx.createOscillator();
+  genSsPanLfo.type = "sine";
+  genSsPanLfo.frequency.value = SS_PAN_RATE;
+  genSsPanInvertGain = ctx.createGain();
+  genSsPanInvertGain.gain.value = -1;
+  genSsPanLfo.connect(genSsPanInvertGain);
+  genSsPanLfo.start();
+
+  genSsLeft = buildSpectraChain(-1, genSsPanLfo);         // in phase
+  genSsRight = buildSpectraChain(1, genSsPanInvertGain);  // 180° out of phase — the actual alternation
+  applySpectraChannelGains();
+}
+
+function stopSpectraStrobe(){
+  stopSpectraChain(genSsLeft);
+  stopSpectraChain(genSsRight);
+  try{ genSsPanLfo?.stop(); }catch(e){}
+  genSsLeft = null; genSsRight = null; genSsPanLfo = null; genSsPanLfoInverted = null; genSsPanInvertGain = null;
+}
+
+function applySpectraChannelGains(){
+  if(!genSsLeft || !genSsRight) return;
+  const leftOn = state.channel === "both" || state.channel === "left";
+  const rightOn = state.channel === "both" || state.channel === "right";
+  genSsLeft.strength.gain.setTargetAtTime(leftOn ? state.strength/100 : 0, ctx.currentTime, 0.05);
+  genSsRight.strength.gain.setTargetAtTime(rightOn ? state.strength/100 : 0, ctx.currentTime, 0.05);
+}
+
 function start(){
   if(running) return;
   if(!ctx) ctx = new (window.AudioContext || window.webkitAudioContext)();
   if(ctx.state === "suspended") ctx.resume();
 
-  left = buildChain(-1);
-  right = buildChain(1);
-  applyChannelGains();
+  if(state.testMode === "spectrastrobe"){
+    startSpectraStrobe();
+  } else {
+    left = buildChain(-1);
+    right = buildChain(1);
+    applyChannelGains();
+  }
 
   running = true;
   powerBtn.classList.add("on");
@@ -198,9 +322,13 @@ function start(){
 
 function stop(){
   if(!running) return;
-  stopChain(left);
-  stopChain(right);
-  left = null; right = null;
+  if(state.testMode === "spectrastrobe"){
+    stopSpectraStrobe();
+  } else {
+    stopChain(left);
+    stopChain(right);
+    left = null; right = null;
+  }
   running = false;
   powerBtn.classList.remove("on");
   statusEl.style.display = "none";
@@ -208,9 +336,15 @@ function stop(){
 
 function updateStatus(){
   if(!running) return;
-  statusEl.textContent =
-    `Running — ${state.freq}Hz carrier, pulsing at ${state.rate.toFixed(1)}Hz, ` +
-    `${state.depth}% depth, ${state.shape === "sine" ? "smooth" : "sharp"} gate, ${state.channel} channel(s).`;
+  if(state.testMode === "spectrastrobe"){
+    statusEl.textContent =
+      `Running — SpectraStrobe: R${state.red}% G${state.green}% B${state.blue}%, ` +
+      `${state.strength}% strength, ${state.channel} channel(s).`;
+  } else {
+    statusEl.textContent =
+      `Running — ${state.freq}Hz carrier, pulsing at ${state.rate.toFixed(1)}Hz, ` +
+      `${state.depth}% depth, ${state.shape === "sine" ? "smooth" : "sharp"} gate, ${state.channel} channel(s).`;
+  }
 }
 
 powerBtn.addEventListener("click", () => {
@@ -250,6 +384,7 @@ strengthSlider.addEventListener("input", () => {
   state.strength = parseInt(strengthSlider.value, 10);
   strengthVal.textContent = state.strength;
   applyChannelGains();
+  applySpectraChannelGains();
   updateStatus();
 });
 
@@ -271,6 +406,31 @@ channelRow.addEventListener("click", (e) => {
   pill.classList.add("active");
   state.channel = pill.dataset.channel;
   applyChannelGains();
+  applySpectraChannelGains();
+  updateStatus();
+});
+
+redSlider.addEventListener("input", () => {
+  state.red = parseInt(redSlider.value, 10);
+  redVal.textContent = state.red;
+  if(genSsLeft) genSsLeft.rGain.gain.setTargetAtTime(state.red/100, ctx.currentTime, 0.05);
+  if(genSsRight) genSsRight.rGain.gain.setTargetAtTime(state.red/100, ctx.currentTime, 0.05);
+  updateStatus();
+});
+
+greenSlider.addEventListener("input", () => {
+  state.green = parseInt(greenSlider.value, 10);
+  greenVal.textContent = state.green;
+  if(genSsLeft) genSsLeft.gGain.gain.setTargetAtTime(state.green/100, ctx.currentTime, 0.05);
+  if(genSsRight) genSsRight.gGain.gain.setTargetAtTime(state.green/100, ctx.currentTime, 0.05);
+  updateStatus();
+});
+
+blueSlider.addEventListener("input", () => {
+  state.blue = parseInt(blueSlider.value, 10);
+  blueVal.textContent = state.blue;
+  if(genSsLeft) genSsLeft.bGain.gain.setTargetAtTime(state.blue/100, ctx.currentTime, 0.05);
+  if(genSsRight) genSsRight.bGain.gain.setTargetAtTime(state.blue/100, ctx.currentTime, 0.05);
   updateStatus();
 });
 
