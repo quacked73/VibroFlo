@@ -24,22 +24,32 @@
         Session page itself, they stay out of the way as simple on/off toggles.
       </div>
 
+      <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:18px 0 4px;">General</div>
+
       <div class="ctrl-row">
-        <div class="ctrl-label">Fade-in duration<small>how gently Luminous eases in when a session starts — "meets you where you are" instead of jumping straight to full intensity</small></div>
+        <div class="ctrl-label">Fade-in duration<small>how gently a session eases in — "meets you where you are" instead of jumping straight to full intensity. Doesn't apply when Screen Mode is decoding a real embedded signal, which starts immediately for an accurate comparison against real hardware</small></div>
         <input type="range" id="prefFadeIn" min="0" max="30" step="1" value="10">
         <div class="ctrl-value"><span id="prefFadeInVal">10</span>s</div>
       </div>
 
       <div class="ctrl-row">
-        <div class="ctrl-label">Screen Mode countdown<small>time to get positioned before the flicker actually starts</small></div>
+        <div class="ctrl-label">Screen Mode countdown<small>time to get positioned before the flicker actually starts — the same either way, decoding or generating</small></div>
         <input type="range" id="prefCountdown" min="5" max="15" step="1" value="6">
         <div class="ctrl-value"><span id="prefCountdownVal">6</span>s</div>
       </div>
 
       <div class="ctrl-row">
-        <div class="ctrl-label">Decoder sensitivity<small>how weak a signal counts as "real" — 5 is the practical floor (most sensitive); SpectraStrobe runs more sensitive than this at every level, since it's read dimmer than a Kasina decoding the same file</small></div>
-        <input type="range" id="prefSensitivity" min="1" max="5" step="1" value="4">
-        <div class="ctrl-value"><span id="prefSensitivityVal">4</span></div>
+        <div class="ctrl-label">Screen Mode default brightness<small>where the brightness slider starts during the countdown — still adjustable each time, and applies whether Screen Mode ends up generating or decoding</small></div>
+        <input type="range" id="prefScreenBrightness" min="15" max="100" step="1" value="70">
+        <div class="ctrl-value"><span id="prefScreenBrightnessVal">70</span>%</div>
+      </div>
+
+      <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:22px 0 4px;">Generating a signal — no real embedded content</div>
+      <div class="callout" style="font-size:12px;">
+        These three only matter when Luminous is making up its own pattern from the tone engines —
+        either the signal sent to external hardware, or Screen Mode's flicker when the track playing
+        doesn't actually have a real embedded signal. None of them do anything while decoding a real
+        Lumasonic, SpectraStrobe, or AudioStrobe track — that always shows exactly what's really encoded.
       </div>
 
       <div class="ctrl-row">
@@ -55,14 +65,16 @@
       </div>
 
       <div class="toggle-line">
-        <div class="ctrl-label">Follow Music by default<small>brightness tracks the ambient track's own volume instead of the drift wander above — only matters when a track is actually playing</small></div>
+        <div class="ctrl-label">Follow Music by default<small>brightness tracks the ambient track's own volume instead of the drift wander above. Only affects the signal sent to external hardware — Screen Mode doesn't use this one at all, generating or decoding</small></div>
         <div class="switch" id="prefFollowMusicSwitch"><div class="knob"></div></div>
       </div>
 
+      <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:22px 0 4px;">Decoding a real embedded signal</div>
+
       <div class="ctrl-row">
-        <div class="ctrl-label">Screen Mode default brightness<small>where the brightness slider starts during the countdown — still adjustable each time</small></div>
-        <input type="range" id="prefScreenBrightness" min="15" max="100" step="1" value="70">
-        <div class="ctrl-value"><span id="prefScreenBrightnessVal">70</span>%</div>
+        <div class="ctrl-label">Decoder sensitivity<small>how weak a signal counts as "real" — 5 is the practical floor (most sensitive); SpectraStrobe runs more sensitive than this at every level, since it's read dimmer than a Kasina decoding the same file. Only matters when reading a real track — does nothing for a generated signal, since there's nothing to detect</small></div>
+        <input type="range" id="prefSensitivity" min="1" max="5" step="1" value="4">
+        <div class="ctrl-value"><span id="prefSensitivityVal">4</span></div>
       </div>
     </div>
 
