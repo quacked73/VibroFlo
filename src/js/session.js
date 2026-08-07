@@ -516,6 +516,11 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   const screenStrobeCountdownNum = document.getElementById("screenStrobeCountdownNum");
   const screenStrobeRotateHint = document.getElementById("screenStrobeRotateHint");
   const screenStrobeControls = document.getElementById("screenStrobeControls");
+  // Adjusting brightness lives inside the same overlay the tap-to-stop
+  // listener is attached to — without this, dragging the slider bubbles up
+  // and gets misread as a tap-to-stop, pausing the flicker for no reason.
+  screenStrobeControls.addEventListener("click", (e) => e.stopPropagation());
+  screenStrobeControls.addEventListener("pointerdown", (e) => e.stopPropagation());
   const screenStrobeBrightness = document.getElementById("screenStrobeBrightness");
   screenStrobeBrightness.value = luminousPrefs.screenBrightnessDefault;
   const screenStrobeConfirm = document.getElementById("screenStrobeConfirm");
@@ -599,6 +604,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
 
   let screenStrobePaused = false; // true while the "Stop Luminous?" prompt is showing
   let screenStrobeConfirmTimer = null;
+  let screenStrobeFadeTimer = null;
 
   function beginScreenStrobeFlicker(){
     screenStrobeRunning = true;
@@ -760,12 +766,18 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeLeft.style.opacity = 0;
     screenStrobeRight.style.opacity = 0;
     screenStrobeConfirm.style.display = "flex";
-    screenStrobeConfirmTimer = setTimeout(resumeScreenStrobeFlicker, 5000);
+    screenStrobeConfirm.style.opacity = "1";
+    screenStrobeConfirmTimer = setTimeout(() => {
+      screenStrobeConfirm.style.opacity = "0"; // fades rather than snapping away when nobody responds
+      screenStrobeFadeTimer = setTimeout(resumeScreenStrobeFlicker, 500);
+    }, 2000);
   }
 
   function resumeScreenStrobeFlicker(){
     if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
+    if(screenStrobeFadeTimer){ clearTimeout(screenStrobeFadeTimer); screenStrobeFadeTimer = null; }
     screenStrobeConfirm.style.display = "none";
+    screenStrobeConfirm.style.opacity = "1"; // reset so it's ready to show fully next time
     screenStrobePaused = false;
     if(screenStrobeRunning) screenStrobeRafId = requestAnimationFrame(screenStrobeLoop);
   }
@@ -799,8 +811,10 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     if(screenStrobeStopTimer) clearTimeout(screenStrobeStopTimer);
     if(screenStrobeCountdownTimer){ clearInterval(screenStrobeCountdownTimer); screenStrobeCountdownTimer = null; }
     if(screenStrobeConfirmTimer){ clearTimeout(screenStrobeConfirmTimer); screenStrobeConfirmTimer = null; }
+    if(screenStrobeFadeTimer){ clearTimeout(screenStrobeFadeTimer); screenStrobeFadeTimer = null; }
     screenStrobePaused = false;
     screenStrobeConfirm.style.display = "none";
+    screenStrobeConfirm.style.opacity = "1";
     screenStrobeOverlay.style.display = "none";
     screenStrobeControls.style.display = "block";
     try{ wakeLockRef?.release(); }catch(e){}

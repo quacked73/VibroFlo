@@ -461,6 +461,8 @@ const ssCountdown = document.getElementById("screenStrobeCountdown");
 const ssCountdownNum = document.getElementById("screenStrobeCountdownNum");
 const ssRotateHint = document.getElementById("screenStrobeRotateHint");
 const ssControls = document.getElementById("screenStrobeControls");
+ssControls.addEventListener("click", (e) => e.stopPropagation());
+ssControls.addEventListener("pointerdown", (e) => e.stopPropagation());
 const ssBrightness = document.getElementById("screenStrobeBrightness");
 const ssConfirm = document.getElementById("screenStrobeConfirm");
 const ssConfirmStop = document.getElementById("screenStrobeConfirmStop");
@@ -471,7 +473,7 @@ let standaloneTracks = [];
 let saCtx = null, saSource = null, saDecoderBank = null;
 let saRunning = false, saPaused = false, saRafId = null, saPhaseStart = 0, saMode = null;
 let saSensitivity = 4;
-let saCountdownTimer = null, saConfirmTimer = null, saWakeLock = null, saStopTimer = null;
+let saCountdownTimer = null, saConfirmTimer = null, saFadeTimer = null, saWakeLock = null, saStopTimer = null;
 let saDecodeLastTime = 0;
 
 (async function loadStandaloneTracks(){
@@ -637,12 +639,18 @@ function saPauseAndConfirm(){
   ssLeft.style.opacity = 0;
   ssRight.style.opacity = 0;
   ssConfirm.style.display = "flex";
-  saConfirmTimer = setTimeout(saResumeFlicker, 5000);
+  ssConfirm.style.opacity = "1";
+  saConfirmTimer = setTimeout(() => {
+    ssConfirm.style.opacity = "0"; // fades rather than snapping away when nobody responds
+    saFadeTimer = setTimeout(saResumeFlicker, 500);
+  }, 2000);
 }
 
 function saResumeFlicker(){
   if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  if(saFadeTimer){ clearTimeout(saFadeTimer); saFadeTimer = null; }
   ssConfirm.style.display = "none";
+  ssConfirm.style.opacity = "1"; // reset so it's ready to show fully next time
   saPaused = false;
   if(saRunning) saRafId = requestAnimationFrame(saLoop);
 }
@@ -659,6 +667,7 @@ function saHandleOverlayTap(){
 ssConfirmStop.addEventListener("click", (e) => {
   e.stopPropagation();
   if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  if(saFadeTimer){ clearTimeout(saFadeTimer); saFadeTimer = null; }
   ssConfirm.style.display = "none";
   saPaused = false;
   stopStandalone();
@@ -674,9 +683,11 @@ async function stopStandalone(){
   if(saRafId) cancelAnimationFrame(saRafId);
   if(saCountdownTimer){ clearInterval(saCountdownTimer); saCountdownTimer = null; }
   if(saConfirmTimer){ clearTimeout(saConfirmTimer); saConfirmTimer = null; }
+  if(saFadeTimer){ clearTimeout(saFadeTimer); saFadeTimer = null; }
   if(saStopTimer){ clearTimeout(saStopTimer); saStopTimer = null; }
   saPaused = false;
   ssConfirm.style.display = "none";
+  ssConfirm.style.opacity = "1";
   ssOverlay.style.display = "none";
   ssControls.style.display = "block";
   try{ saSource?.stop(); }catch(e){}
