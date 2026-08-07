@@ -12,7 +12,7 @@
   <div id="site-nav" class="site-nav"></div>
 
   <div class="console">
-    <div class="hero-eyebrow"><b>Settings</b></div>
+    <div class="hero-eyebrow"><b>Settings</b> &nbsp;·&nbsp; <a href="/guide.html#settings" style="color:var(--muted); text-decoration:none; font-weight:400;">Full guide →</a></div>
 
     <div class="section dim-target" style="border-top:none; padding-top:8px;">
       <div class="section-title">Storage</div>
@@ -25,9 +25,15 @@
       <div style="margin-bottom:14px;">
         <label for="settingsFileInput" class="timer-btn" style="cursor:pointer;">+ Add audio files</label>
         <input type="file" id="settingsFileInput" accept="audio/*" multiple style="display:none;">
-        <div class="toggle-line" style="margin-top:10px;">
-          <div class="ctrl-label" style="font-size:12.5px;">This file already has an embedded light signal<small>e.g. a purchased AudioStrobe/SpectraStrobe track — Luminous Sync will automatically stay quiet while it plays, so the two signals don't collide</small></div>
-          <div class="switch" id="embeddedLightSwitch"><div class="knob"></div></div>
+        <div style="margin-top:10px;">
+          <div class="ctrl-label" style="font-size:12.5px; margin-bottom:8px;">Light signal<small>if you know this file has a real embedded AudioStrobe/SpectraStrobe/Lumasonic signal, set it here — this can always be changed later per file below</small></div>
+          <select id="addFormatSelect" class="field-input" style="width:100%;">
+            <option value="none" selected>None</option>
+            <option value="auto">Yes — auto-detect which format</option>
+            <option value="audiostrobe">Yes — AudioStrobe</option>
+            <option value="spectrastrobe">Yes — SpectraStrobe</option>
+            <option value="lumasonic">Yes — Lumasonic</option>
+          </select>
         </div>
       </div>
       <div id="libraryList" style="display:flex; flex-direction:column; gap:6px;"></div>
@@ -37,6 +43,24 @@
         library. Anything you add yourself shows up under "This device only"
         or "Synced," depending on whether you're signed in.
       </div>
+    </div>
+
+    <div class="section dim-target">
+      <div class="section-title">Backup &amp; Transfer</div>
+      <div class="callout">
+        Presets, session history, Luminous settings, and light-signal format tags all live only on
+        this device right now. Export them as one file to move to another device, or attach it to an
+        email as a backup. This does <b>not</b> include the actual audio files you've uploaded locally —
+        those are large enough to make a file like this impractical to email, and would need
+        re-adding on the new device. Files hosted through Cloudinary don't have this problem at all,
+        since they're already reachable from anywhere.
+      </div>
+      <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px;">
+        <div class="timer-btn" id="exportBackupBtn" style="cursor:pointer;">Export backup file</div>
+        <label for="importBackupInput" class="timer-btn" style="cursor:pointer;">Import backup file</label>
+        <input type="file" id="importBackupInput" accept="application/json" style="display:none;">
+      </div>
+      <div class="callout" id="backupStatus" style="margin-top:12px; display:none;"></div>
     </div>
   </div>
 

@@ -470,6 +470,21 @@
   text-decoration:none; color:var(--text);
   font-family:var(--sans); font-weight:700; font-size:14px;
 }
+.site-nav-right{
+  display:flex; align-items:center; gap:10px;
+  min-width:0; /* lets the pill group inside shrink and scroll instead of pushing this wider */
+}
+.site-nav-help{
+  flex:0 0 auto;
+  display:flex; align-items:center; justify-content:center;
+  width:26px; height:26px;
+  border-radius:50%;
+  border:1px solid var(--line);
+  color:var(--muted);
+  text-decoration:none;
+  font-family:var(--sans); font-weight:700; font-size:13px;
+}
+.site-nav-help:hover{ color:var(--text); border-color:var(--muted); }
 .site-nav-links{
   display:flex; gap:4px;
   background:var(--panel-2);

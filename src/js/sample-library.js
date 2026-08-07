@@ -38,6 +38,7 @@ export async function getBundledTracks(){
     file: entry.file,
     buffer: null,
     hasEmbeddedLight: !!entry.hasEmbeddedLight,
+    lightFormat: entry.lightFormat,
   }));
 }
 

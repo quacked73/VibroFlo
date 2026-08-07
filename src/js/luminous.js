@@ -448,6 +448,7 @@ import {
   buildDecoderBank, readDecoderLevels, smoothLevels,
   audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic,
   levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline,
+  createDetectionLock, updateDetectionLock,
 } from "./luminous-decode.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
 
@@ -472,6 +473,8 @@ const ssSignalDot = document.getElementById("screenStrobeSignalDot");
 let standaloneTracks = [];
 let saCtx = null, saSource = null, saDecoderBank = null;
 let saRunning = false, saPaused = false, saRafId = null, saPhaseStart = 0, saMode = null;
+let saCurrentTrack = null;
+const saDetectionLock = createDetectionLock();
 let saSensitivity = 4;
 let saCountdownTimer = null, saConfirmTimer = null, saFadeTimer = null, saWakeLock = null, saStopTimer = null;
 let saDecodeLastTime = 0;
@@ -490,7 +493,7 @@ let saDecodeLastTime = 0;
   standaloneTracks.forEach((t, i) => {
     const opt = document.createElement("option");
     opt.value = String(i);
-    opt.textContent = t.name + (t.hasEmbeddedLight ? " 💡" : "");
+    opt.textContent = t.name + (t.lightFormat && t.lightFormat !== "none" ? " 💡" : "");
     standaloneTrackSelect.appendChild(opt);
   });
 })();
@@ -509,6 +512,7 @@ standaloneStartBtn.addEventListener("click", () => {
 });
 
 async function startStandaloneSequence(track){
+  saCurrentTrack = track;
   const prefs = getLuminousPrefs();
   ssBrightness.value = prefs.screenBrightnessDefault;
   saSensitivity = prefs.sensitivity;
@@ -596,34 +600,51 @@ function saLoop(now){
 
   const rawLevels = readDecoderLevels(saDecoderBank);
   saUpdateSignalDot(rawLevels);
-  const isLumasonic = detectLumasonic(rawLevels, saSensitivity);
-  const isSpectra = !isLumasonic && detectSpectraStrobeReference(saDecoderBank, rawLevels, saSensitivity);
-  const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, saSensitivity);
+
+  const forced = (saCurrentTrack?.lightFormat && saCurrentTrack.lightFormat !== "auto" && saCurrentTrack.lightFormat !== "none")
+    ? saCurrentTrack.lightFormat : null;
+  let activeFormat, currentlyPresent;
+  if(forced){
+    activeFormat = forced;
+    if(forced === "lumasonic") currentlyPresent = detectLumasonic(rawLevels, saSensitivity);
+    else if(forced === "spectrastrobe") currentlyPresent = detectSpectraStrobeReference(saDecoderBank, rawLevels, saSensitivity);
+    else currentlyPresent = audioStrobeSignalPresent(rawLevels, saSensitivity);
+  } else {
+    const candidates = {
+      lumasonic: detectLumasonic(rawLevels, saSensitivity),
+      spectrastrobe: detectSpectraStrobeReference(saDecoderBank, rawLevels, saSensitivity),
+      audiostrobe: audioStrobeSignalPresent(rawLevels, saSensitivity),
+    };
+    activeFormat = updateDetectionLock(saDetectionLock, saCurrentTrack?.id, candidates, null);
+    currentlyPresent = activeFormat ? candidates[activeFormat] : false;
+  }
+
   const levels = smoothLevels(saDecoderBank, rawLevels, dtSeconds);
   const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
   const baseline = noiseBaseline(rawLevels);
 
-  if(isLumasonic){
+  if(activeFormat === "lumasonic" && currentlyPresent){
     saMode = "lumasonic";
     const l = levelsToColorLumasonic(levels.left, baseline), r = levelsToColorLumasonic(levels.right, baseline);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
-  } else if(isSpectra){
+  } else if(activeFormat === "spectrastrobe" && currentlyPresent){
     saMode = "spectra";
     const l = levelsToColorSpectra(levels.left, baseline), r = levelsToColorSpectra(levels.right, baseline);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
-  } else if(hasAudioStrobe){
+  } else if(activeFormat === "audiostrobe" && currentlyPresent){
     if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
     ssLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
     ssRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
   } else {
-    // No signal right now — a genuinely quiet passage is real, authored
-    // data, not an absence to paper over with a fabricated pattern. Go dark.
+    // No signal right now — either still building confidence on format, or
+    // a genuinely quiet passage in an already-locked track. Go dark rather
+    // than fabricate a substitute pattern.
     if(saMode !== "silent"){ saMode = "silent"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
     ssLeft.style.opacity = "0";
     ssRight.style.opacity = "0";

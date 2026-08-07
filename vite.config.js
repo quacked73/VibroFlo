@@ -21,6 +21,7 @@ export default defineConfig({
         luminous: resolve(__dirname, "luminous.html"),
         settings: resolve(__dirname, "settings.html"),
         about: resolve(__dirname, "about.html"),
+        guide: resolve(__dirname, "guide.html"),
       },
     },
   },

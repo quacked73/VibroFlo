@@ -11,12 +11,15 @@ export function renderNav(activePage){
       ${logoSVG(22)}
       <span class="site-nav-title">VibroFlō</span>
     </a>
-    <div class="site-nav-links">
-      <a href="/index.html" data-page="index">Home</a>
-      <a href="/session.html" data-page="session">Session</a>
-      <a href="/luminous.html" data-page="luminous">Luminous</a>
-      <a href="/settings.html" data-page="settings">Settings</a>
-      <a href="/about.html" data-page="about">About</a>
+    <div class="site-nav-right">
+      <div class="site-nav-links">
+        <a href="/index.html" data-page="index">Home</a>
+        <a href="/session.html" data-page="session">Session</a>
+        <a href="/luminous.html" data-page="luminous">Luminous</a>
+        <a href="/settings.html" data-page="settings">Settings</a>
+        <a href="/about.html" data-page="about">About</a>
+      </div>
+      <a href="/guide.html" class="site-nav-help" title="Guide">?</a>
     </div>
   `;
   root.querySelectorAll("[data-page]").forEach(a => {

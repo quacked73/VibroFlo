@@ -4,8 +4,8 @@
 // storage layer for a single codebase that targets all three.
 
 const DB_NAME = "vibrosomaticsDB";
-const DB_VERSION = 3; // v3 adds luminousAcknowledgments (safety-warning acknowledgment log)
-const STORES = ["presets", "ambientTracks", "sessionHistory", "luminousAcknowledgments"];
+const DB_VERSION = 4; // v4 adds bundledOverrides (user edits to bundled-track metadata, since the manifest itself is a static file the app can't rewrite)
+const STORES = ["presets", "ambientTracks", "sessionHistory", "luminousAcknowledgments", "bundledOverrides"];
 
 let dbPromise = null;
 
@@ -20,6 +20,7 @@ export function openDB(){
       if(!db.objectStoreNames.contains("ambientTracks")) db.createObjectStore("ambientTracks", { keyPath: "id" });
       if(!db.objectStoreNames.contains("sessionHistory")) db.createObjectStore("sessionHistory", { keyPath: "id" });
       if(!db.objectStoreNames.contains("luminousAcknowledgments")) db.createObjectStore("luminousAcknowledgments", { keyPath: "id" });
+      if(!db.objectStoreNames.contains("bundledOverrides")) db.createObjectStore("bundledOverrides", { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);

@@ -27,6 +27,12 @@ export function initTour(){
   showModal();
 }
 
+// For a "Replay tour" link — bypasses the first-visit check entirely, since
+// by definition someone clicking that link has already seen it before.
+export function replayTour(){
+  showModal();
+}
+
 function showModal(){
   const overlay = document.createElement("div");
   overlay.className = "tour-modal-overlay";

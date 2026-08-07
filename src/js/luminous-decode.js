@@ -247,3 +247,56 @@ export function levelsToColorLumasonic(sideLevels, baseline){
 export function levelsToColorSpectra(sideLevels, baseline){
   return adaptiveColorScale(sideLevels.ss_r, sideLevels.ss_g, sideLevels.ss_b, baseline);
 }
+
+// Without this, which codec is "active" gets re-decided completely fresh
+// every single animation frame — and a few noisy or borderline frames can
+// flip the result back and forth. This matters more than it might seem:
+// AudioStrobe's one tone and SpectraStrobe's green channel sit at exactly
+// the same frequency (19200Hz), so a SpectraStrobe reference-tone check
+// that misses on one real-world frame reads as plain AudioStrobe for that
+// frame, then flips back the moment the reference tone is caught again.
+// Committing to whichever format has been consistently detected for a
+// short confirmation window, then sticking with that decision until a new
+// track starts, removes the flicker at its source instead of patching
+// around it downstream. A manual per-track format tag skips the
+// confirmation window entirely and locks immediately, for tracks where the
+// format is already known.
+const LOCK_CONFIRM_FRAMES = 8; // roughly 130ms at 60fps of consistent detection before committing
+
+export function createDetectionLock(){
+  return { format: null, trackId: undefined, streak: { lumasonic: 0, spectrastrobe: 0, audiostrobe: 0 } };
+}
+
+function resetDetectionLock(lock, trackId){
+  lock.format = null;
+  lock.trackId = trackId;
+  lock.streak = { lumasonic: 0, spectrastrobe: 0, audiostrobe: 0 };
+}
+
+// candidates: { lumasonic, spectrastrobe, audiostrobe } — this frame's raw,
+// unlocked detection results. forcedFormat: a manual per-track override
+// ("lumasonic" | "spectrastrobe" | "audiostrobe"), if set. Returns the
+// currently-committed format, or null if still building confidence.
+export function updateDetectionLock(lock, trackId, candidates, forcedFormat){
+  if(lock.trackId !== trackId) resetDetectionLock(lock, trackId);
+
+  if(forcedFormat){
+    lock.format = forcedFormat;
+    return lock.format;
+  }
+
+  if(lock.format) return lock.format; // already committed for this track — don't re-litigate every frame
+
+  for(const key of ["lumasonic", "spectrastrobe", "audiostrobe"]){
+    if(candidates[key]){
+      lock.streak[key]++;
+      if(lock.streak[key] >= LOCK_CONFIRM_FRAMES){
+        lock.format = key;
+        return lock.format;
+      }
+    } else {
+      lock.streak[key] = 0;
+    }
+  }
+  return null;
+}

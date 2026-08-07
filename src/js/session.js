@@ -9,12 +9,12 @@ import { decodeBundledTrack } from "./sample-library.js";
 import { loadTrackList, fetchSyncedTrackBlob } from "./ambient-library.js";
 import { renderNav, setNavBackgroundMode } from "./nav.js";
 import { logoSVG } from "./logo.js";
-import { initTour } from "./tour.js";
+import { initTour, replayTour } from "./tour.js";
 import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.js";
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
-import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline, createDetectionLock, updateDetectionLock } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -650,8 +650,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const fadeInFactor = Math.min(1, phaseTime / Math.max(0.1, luminousPrefs.fadeInSeconds));
 
     const track = currentAmbientTrack();
-    if(track?.hasEmbeddedLight && luminousDecoderBank){
-      renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor);
+    const lightFormat = track?.lightFormat || "none";
+    if(lightFormat !== "none" && luminousDecoderBank){
+      renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor, track);
     } else {
       if(screenStrobeCurrentMode !== "synthetic"){
         screenStrobeCurrentMode = "synthetic";
@@ -685,33 +686,51 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
   }
 
-  // Reads a real AudioStrobe/SpectraStrobe signal from the currently
-  // playing track instead of generating one. Falls back to the synthetic
-  // flicker above if no usable signal actually turns up despite the track
-  // being flagged — a mis-tagged file or one where lossy compression ate
-  // the embedded tone shouldn't just go dark with no explanation.
+  // Reads a real AudioStrobe/SpectraStrobe/Lumasonic signal from the
+  // currently playing track instead of generating one. Falls back to the
+  // synthetic flicker above if no usable signal actually turns up despite
+  // the track being flagged — a mis-tagged file or one where lossy
+  // compression ate the embedded tone shouldn't just go dark with no
+  // explanation.
   let luminousDecodeLastTime = 0;
+  const screenStrobeDetectionLock = createDetectionLock();
 
-  function renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor){
+  function renderScreenStrobeFromDecoder(brightnessCeiling, fadeInFactor, track){
     const now = performance.now();
     const dtSeconds = luminousDecodeLastTime ? (now - luminousDecodeLastTime) / 1000 : 1/60;
     luminousDecodeLastTime = now;
 
     const rawLevels = readDecoderLevels(luminousDecoderBank);
     updateSignalDot(rawLevels);
-    // Detection stays on the raw signal — smoothing is for how it looks
-    // rendered, not for deciding whether a real signal is present.
-    // Lumasonic checked first: its reference tone (22500Hz) doesn't overlap
-    // with anything else these codecs use, so it's the cleanest possible
-    // discriminator — no risk of a false read from SpectraStrobe/AudioStrobe
-    // content bleeding into it.
-    const isLumasonic = detectLumasonic(rawLevels, luminousPrefs.sensitivity);
-    const isSpectra = !isLumasonic && detectSpectraStrobeReference(luminousDecoderBank, rawLevels, luminousPrefs.sensitivity);
-    const hasAudioStrobe = !isLumasonic && !isSpectra && audioStrobeSignalPresent(rawLevels, luminousPrefs.sensitivity);
+
+    // A manual tag ("spectrastrobe" etc., not "auto") skips detection
+    // entirely and locks straight to that format — the strongest form of
+    // protection against one format's frequencies bleeding into another's
+    // read, since the other codecs are never even checked.
+    const forced = (track.lightFormat !== "auto" && track.lightFormat !== "none") ? track.lightFormat : null;
+    let activeFormat, currentlyPresent;
+    if(forced){
+      activeFormat = forced;
+      if(forced === "lumasonic") currentlyPresent = detectLumasonic(rawLevels, luminousPrefs.sensitivity);
+      else if(forced === "spectrastrobe") currentlyPresent = detectSpectraStrobeReference(luminousDecoderBank, rawLevels, luminousPrefs.sensitivity);
+      else currentlyPresent = audioStrobeSignalPresent(rawLevels, luminousPrefs.sensitivity);
+    } else {
+      // Lumasonic checked first: its reference tone (22500Hz) doesn't
+      // overlap with anything else these codecs use, so it's the cleanest
+      // possible discriminator on any given frame.
+      const candidates = {
+        lumasonic: detectLumasonic(rawLevels, luminousPrefs.sensitivity),
+        spectrastrobe: detectSpectraStrobeReference(luminousDecoderBank, rawLevels, luminousPrefs.sensitivity),
+        audiostrobe: audioStrobeSignalPresent(rawLevels, luminousPrefs.sensitivity),
+      };
+      activeFormat = updateDetectionLock(screenStrobeDetectionLock, track.id, candidates, null);
+      currentlyPresent = activeFormat ? candidates[activeFormat] : false;
+    }
+
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
     const baseline = noiseBaseline(rawLevels);
 
-    if(isLumasonic){
+    if(activeFormat === "lumasonic" && currentlyPresent){
       screenStrobeCurrentMode = "decode-lumasonic";
       const leftColor = levelsToColorLumasonic(levels.left, baseline);
       const rightColor = levelsToColorLumasonic(levels.right, baseline);
@@ -719,7 +738,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
       screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
-    } else if(isSpectra){
+    } else if(activeFormat === "spectrastrobe" && currentlyPresent){
       screenStrobeCurrentMode = "decode-color";
       const leftColor = levelsToColorSpectra(levels.left, baseline);
       const rightColor = levelsToColorSpectra(levels.right, baseline);
@@ -730,7 +749,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       // way the synthetic mode does.
       screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
       screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
-    } else if(hasAudioStrobe){
+    } else if(activeFormat === "audiostrobe" && currentlyPresent){
       if(screenStrobeCurrentMode !== "decode-brightness"){
         screenStrobeCurrentMode = "decode-brightness";
         screenStrobeLeft.style.backgroundColor = "";
@@ -739,9 +758,9 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
       screenStrobeLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
       screenStrobeRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
     } else {
-      // A flagged track with no signal *right now* isn't necessarily
-      // broken — amplitude is brightness, so a genuinely quiet passage
-      // looks identical to "no signal" from here, and that's valid,
+      // No signal right now — either still building confidence on which
+      // format this is, or a genuinely quiet passage in an already-locked
+      // track. Amplitude is brightness, so a quiet passage is valid,
       // authored data, not an absence to paper over. Go dark rather than
       // fabricate a substitute pattern that isn't what the track actually
       // encodes at this moment.
@@ -1420,7 +1439,7 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     const track = state.ambientTracks[index];
     if(!track) return;
 
-    setLuminousSuppressed(!!track.hasEmbeddedLight);
+    setLuminousSuppressed(!!track.lightFormat && track.lightFormat !== "none");
 
     await decodeTrackIfNeeded(track);
     if(!track.buffer) return;
@@ -2319,7 +2338,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
   renderQueue();
   drawScope();
   renderProgressStats();
-  initTour();
+  if(new URLSearchParams(location.search).get("tour") === "1") replayTour();
+  else initTour();
   onBroadcastStopAll(() => { if(running) stop(); });
 
   // Restore whatever was running last time, so a returning visit opens where
