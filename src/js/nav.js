@@ -25,6 +25,11 @@ export function renderNav(activePage){
   root.querySelectorAll("[data-page]").forEach(a => {
     if(a.dataset.page === activePage) a.classList.add("active");
   });
+  // Guide isn't part of any single tab, so its "you are here" signal lives
+  // on the help icon itself rather than forcing a false match in the tab row.
+  if(activePage === "guide"){
+    root.querySelector(".site-nav-help")?.classList.add("active");
+  }
 }
 
 // Navigating to another page is a real page load — it tears down whatever's

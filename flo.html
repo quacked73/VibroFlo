@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>VibroFlō — Build a Flō</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+  <div id="site-nav" class="site-nav"></div>
+
+  <div class="console">
+    <div class="hero-eyebrow">
+      <b style="color:var(--text); font-size:13px;">Build a Flō</b>
+      &nbsp;·&nbsp; <a href="/guide.html#session" style="color:var(--muted); text-decoration:none;">Full guide →</a>
+      <div style="margin-top:4px;">A few quick questions, and it lands on your Home page ready to use</div>
+    </div>
+
+    <div class="flo-progress" id="floProgress"></div>
+
+    <!-- Step 1 — intent -->
+    <div class="section dim-target flo-step" data-step="1" style="border-top:none;">
+      <div class="section-title">What's this one for?</div>
+      <div class="callout">This sets sensible starting points for everything else — you can adjust any of it as we go.</div>
+      <div class="pillrow flo-choice" id="floGoalRow" style="margin-top:12px;">
+        <div class="pill" data-goal="focus">Focus</div>
+        <div class="pill" data-goal="relax">Relax</div>
+        <div class="pill" data-goal="sleep">Sleep</div>
+        <div class="pill" data-goal="winddown">Wind down</div>
+        <div class="pill" data-goal="energize">Energize</div>
+      </div>
+    </div>
+
+    <!-- Step 2 — shape -->
+    <div class="section dim-target flo-step" data-step="2" style="display:none;">
+      <div class="section-title">How long, and what shape?</div>
+
+      <div class="pill-ctrl">
+        <div class="ctrl-label" style="margin-bottom:8px;">Length</div>
+        <div class="pillrow flo-choice" id="floLengthRow">
+          <div class="pill" data-min="15">15 min</div>
+          <div class="pill active" data-min="30">30 min</div>
+          <div class="pill" data-min="45">45 min</div>
+          <div class="pill" data-min="60">60 min</div>
+        </div>
+      </div>
+
+      <div class="pill-ctrl">
+        <div class="ctrl-label" style="margin-bottom:8px;">Shape<small>hold one steady state, or glide from one to another over the session</small></div>
+        <div class="pillrow flo-choice" id="floArcRow">
+          <div class="pill active" data-arc="off">Hold steady</div>
+          <div class="pill" data-arc="auto">Glide</div>
+        </div>
+      </div>
+
+      <div class="pill-ctrl">
+        <div class="ctrl-label" style="margin-bottom:8px;">Ending</div>
+        <div class="pillrow flo-choice" id="floEndingRow">
+          <div class="pill active" data-ending="fadeout">Fade to silence</div>
+          <div class="pill" data-ending="sunrise">Fade up to wake</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Step 3 — sound -->
+    <div class="section dim-target flo-step" data-step="3" style="display:none;">
+      <div class="section-title">The sound itself</div>
+      <div class="callout" id="floBandNote"></div>
+
+      <div class="pill-ctrl" style="margin-top:12px;">
+        <div class="ctrl-label" style="margin-bottom:8px;">Texture<small>Low is felt more than heard; High is the classic binaural range. Combine runs both</small></div>
+        <div class="pillrow flo-choice" id="floEngineRow">
+          <div class="pill" data-engine="low">Low</div>
+          <div class="pill active" data-engine="high">High</div>
+          <div class="pill" data-engine="combine">Combine</div>
+        </div>
+      </div>
+
+      <div class="pill-ctrl">
+        <div class="ctrl-label" style="margin-bottom:8px;">Background<small>a soft bed of noise underneath — helps in shared or noisy spaces</small></div>
+        <div class="pillrow flo-choice" id="floNoiseRow">
+          <div class="pill active" data-noise="off">None</div>
+          <div class="pill" data-noise="pink">Pink</div>
+          <div class="pill" data-noise="white">White</div>
+        </div>
+      </div>
+
+      <div class="toggle-line">
+        <div class="ctrl-label">Natural drift<small>lets the pace wander slightly instead of holding dead still — usually feels less fatiguing over a long session</small></div>
+        <div class="switch on" id="floDriftSwitch"><div class="knob"></div></div>
+      </div>
+    </div>
+
+    <!-- Step 4 — add-ons -->
+    <div class="section dim-target flo-step" data-step="4" style="display:none;">
+      <div class="section-title">Anything else?</div>
+      <div class="callout">All optional — leave them off and this is a clean tones-only session.</div>
+
+      <div class="toggle-line" style="margin-top:12px;">
+        <div class="ctrl-label">Music underneath<small>plays through your ambient library while the session runs</small></div>
+        <div class="switch" id="floMusicSwitch"><div class="knob"></div></div>
+      </div>
+
+      <div class="toggle-line">
+        <div class="ctrl-label">Breath pacer<small>a slow visual and audible rhythm to breathe along with</small></div>
+        <div class="switch" id="floBreathSwitch"><div class="knob"></div></div>
+      </div>
+
+      <div class="toggle-line">
+        <div class="ctrl-label">Light sync<small>Luminous — for compatible hardware, or your phone's own screen</small></div>
+        <div class="switch" id="floLightSwitch"><div class="knob"></div></div>
+      </div>
+      <div class="callout" id="floLightWarning" style="display:none; border-color:var(--amber-dim);">
+        <b style="color:var(--amber);">Before you turn this on:</b> flashing light can trigger seizures in people with
+        photosensitive epilepsy. Don't use it if you or anyone in your family has a history of seizures, epilepsy,
+        migraines, or light sensitivity without talking to a doctor first. You'll be asked to confirm again when the
+        session actually starts.
+      </div>
+    </div>
+
+    <!-- Step 5 — name & save -->
+    <div class="section dim-target flo-step" data-step="5" style="display:none;">
+      <div class="section-title">Name it</div>
+      <div class="callout" id="floSummary"></div>
+      <input type="text" id="floName" class="field-input" style="width:100%; margin-top:12px;" placeholder="Give this Flō a name" maxlength="60">
+    </div>
+
+    <div class="section" style="display:flex; gap:10px; justify-content:space-between; align-items:center;">
+      <div class="timer-btn" id="floBackBtn" style="cursor:pointer; visibility:hidden;">Back</div>
+      <div style="display:flex; gap:10px;">
+        <div class="timer-btn" id="floSkipBtn" style="cursor:pointer;">Skip to end</div>
+        <div class="timer-btn active" id="floNextBtn" style="cursor:pointer;">Next</div>
+      </div>
+    </div>
+  </div>
+
+<script type="module" src="/src/js/flo.js"></script>
+</body>
+</html>

@@ -22,6 +22,7 @@ export default defineConfig({
         settings: resolve(__dirname, "settings.html"),
         about: resolve(__dirname, "about.html"),
         guide: resolve(__dirname, "guide.html"),
+        flo: resolve(__dirname, "flo.html"),
       },
     },
   },
