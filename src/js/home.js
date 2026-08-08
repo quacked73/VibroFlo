@@ -3,7 +3,7 @@ import { getBundledTracks } from "./sample-library.js";
 import { gradientFor } from "./card-art.js";
 import { renderNav } from "./nav.js";
 import { brandHeroHTML } from "./logo.js";
-import { dbGet } from "./db.js";
+import { dbGet, dbPut } from "./db.js";
 
 renderNav("index");
 document.getElementById("brand-hero-root").innerHTML = brandHeroHTML();
@@ -65,6 +65,111 @@ function renderRow(root, { title, sub, items }){
   root.appendChild(section);
 }
 
+// "My Sessions" is the one row built from data you can actually change —
+// every other row (Arcs, Solfeggio, Ambient, bundled tracks) is fixed
+// content, so it stays on the plain renderRow above. This one needs its own
+// path: an Edit toggle that switches tiles from "tap to load" links into
+// "tap to rename, or delete" controls, with rename/delete actually writing
+// back to the same presets store the tiles are read from.
+let savedPresets = [];
+let mySessionsEditing = false;
+
+function renderMySessionsRow(root){
+  const existing = root.querySelector('[data-row="my-sessions"]');
+  if(existing) existing.remove();
+
+  const items = savedPresets.filter(p => p.id);
+  if(!items.length && !mySessionsEditing) return;
+
+  const section = document.createElement("div");
+  section.className = "row-section";
+  section.dataset.row = "my-sessions";
+  section.innerHTML = `
+    <div class="row-header">
+      <h3>My Sessions</h3>
+      ${(items.length || mySessionsEditing) ? `<span class="row-edit-btn" id="mySessionsEditBtn">${mySessionsEditing ? "Done" : "Edit"}</span>` : ""}
+    </div>
+    <div class="row-sub">Built by you — tap to load the whole setup, tones and music together</div>
+    <div class="card-row" id="mySessionsCardRow"></div>
+  `;
+  root.appendChild(section);
+
+  const cardRow = section.querySelector("#mySessionsCardRow");
+  if(!items.length && mySessionsEditing){
+    cardRow.innerHTML = `<div class="row-sub" style="padding:0;">Nothing saved yet.</div>`;
+  } else {
+    items.forEach(p => cardRow.appendChild(buildMySessionCard(p, root)));
+  }
+
+  const editBtn = section.querySelector("#mySessionsEditBtn");
+  if(editBtn){
+    editBtn.addEventListener("click", () => {
+      mySessionsEditing = !mySessionsEditing;
+      renderMySessionsRow(root);
+    });
+  }
+}
+
+function buildMySessionCard(preset, root){
+  const wrap = document.createElement(mySessionsEditing ? "div" : "a");
+  wrap.className = "session-card";
+  if(!mySessionsEditing) wrap.href = `/session.html?loadPreset=${encodeURIComponent(preset.id)}`;
+
+  const art = document.createElement("div");
+  art.className = "card-art";
+  art.setAttribute("style", artStyle({ image: preset.imageDataUrl, seed: preset.id }));
+  art.innerHTML = `<span class="card-badge">Mine</span>`;
+
+  if(mySessionsEditing){
+    const del = document.createElement("span");
+    del.className = "card-delete-btn";
+    del.textContent = "✕";
+    del.title = "Delete this session";
+    del.addEventListener("click", async (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      savedPresets = savedPresets.filter(p => p.id !== preset.id);
+      await dbPut("presets", savedPresets, "all");
+      renderMySessionsRow(root);
+    });
+    art.appendChild(del);
+  }
+  wrap.appendChild(art);
+
+  const text = document.createElement("div");
+  text.className = "card-text";
+
+  if(mySessionsEditing){
+    const input = document.createElement("input");
+    input.className = "card-title-input";
+    input.type = "text";
+    input.value = preset.name;
+    input.maxLength = 60;
+    input.addEventListener("click", (e) => e.preventDefault());
+    input.addEventListener("change", async () => {
+      const newName = input.value.trim();
+      if(!newName){ input.value = preset.name; return; }
+      if(newName === preset.name) return;
+      preset.name = newName;
+      await dbPut("presets", savedPresets, "all");
+    });
+    text.appendChild(input);
+  } else {
+    const titleEl = document.createElement("div");
+    titleEl.className = "card-title";
+    titleEl.textContent = preset.name;
+    text.appendChild(titleEl);
+  }
+
+  const desc = document.createElement("div");
+  desc.className = "card-desc";
+  desc.textContent = describePreset(preset.data || {});
+  text.appendChild(desc);
+
+  wrap.appendChild(text);
+  return wrap;
+}
+
 // Turns one of your saved User Default presets into a short description —
 // whatever arc it's using, or its Low engine's band if no arc is active.
 function describePreset(data){
@@ -114,20 +219,10 @@ async function init(){
   // Your own saved sessions — built on the Session page (dial in the tones,
   // add tracks to the queue, pick a cover image, hit "Save as User Default")
   // and they show up here automatically.
-  let customItems = [];
   try{
-    const savedPresets = await dbGet("presets", "all");
-    if(Array.isArray(savedPresets)){
-      customItems = savedPresets
-        .filter(p => p.id) // older presets saved before this feature existed have no id — skip those
-        .map(p => ({
-          href: `/session.html?loadPreset=${encodeURIComponent(p.id)}`,
-          badge: "Mine",
-          title: p.name,
-          desc: describePreset(p.data || {}),
-          seed: p.id,
-          image: p.imageDataUrl || null,
-        }));
+    const stored = await dbGet("presets", "all");
+    if(Array.isArray(stored)){
+      savedPresets = stored.filter(p => p.id); // older presets saved before this feature existed have no id — skip those
     }
   }catch(e){
     console.warn("Could not load your saved sessions for Home:", e);
@@ -140,11 +235,7 @@ async function init(){
 
   const rowsRoot = document.getElementById("rows-root");
 
-  renderRow(rowsRoot, {
-    title: "My Sessions",
-    sub: "Built by you — tap to load the whole setup, tones and music together",
-    items: customItems,
-  });
+  renderMySessionsRow(rowsRoot);
 
   const focusItems = [
     arcItems.find(i => i.href.includes("preset=focus")),

@@ -38,6 +38,10 @@ const prefCountdown = document.getElementById("prefCountdown");
 const prefCountdownVal = document.getElementById("prefCountdownVal");
 const prefSensitivity = document.getElementById("prefSensitivity");
 const prefSensitivityVal = document.getElementById("prefSensitivityVal");
+const prefFlickerContrast = document.getElementById("prefFlickerContrast");
+const prefFlickerContrastVal = document.getElementById("prefFlickerContrastVal");
+const prefFlickerDuty = document.getElementById("prefFlickerDuty");
+const prefFlickerDutyVal = document.getElementById("prefFlickerDutyVal");
 const prefFadeInVal = document.getElementById("prefFadeInVal");
 const prefEyeDrift = document.getElementById("prefEyeDrift");
 const prefEyeDriftVal = document.getElementById("prefEyeDriftVal");
@@ -55,6 +59,10 @@ const prefScreenBrightnessVal = document.getElementById("prefScreenBrightnessVal
   prefCountdownVal.textContent = prefs.countdownSeconds;
   prefSensitivity.value = prefs.sensitivity;
   prefSensitivityVal.textContent = prefs.sensitivity;
+  prefFlickerContrast.value = prefs.flickerContrast;
+  prefFlickerContrastVal.textContent = prefs.flickerContrast;
+  prefFlickerDuty.value = prefs.flickerDuty;
+  prefFlickerDutyVal.textContent = prefs.flickerDuty;
   prefEyeDrift.value = prefs.eyeDrift;
   prefEyeDriftVal.textContent = prefs.eyeDrift;
   prefBrightnessVar.value = prefs.brightnessVar;
@@ -75,6 +83,15 @@ prefCountdown.addEventListener("input", () => {
 prefSensitivity.addEventListener("input", () => {
   prefSensitivityVal.textContent = prefSensitivity.value;
   saveLuminousPrefs({ sensitivity: parseInt(prefSensitivity.value, 10) });
+});
+prefFlickerDuty.addEventListener("input", () => {
+  prefFlickerDutyVal.textContent = prefFlickerDuty.value;
+  saveLuminousPrefs({ flickerDuty: parseInt(prefFlickerDuty.value, 10) });
+});
+prefFlickerContrast.addEventListener("input", () => {
+  prefFlickerContrastVal.textContent = prefFlickerContrast.value;
+  saFlickerContrast = parseInt(prefFlickerContrast.value, 10) / 100;
+  saveLuminousPrefs({ flickerContrast: parseInt(prefFlickerContrast.value, 10) });
 });
 prefEyeDrift.addEventListener("input", () => {
   prefEyeDriftVal.textContent = prefEyeDrift.value;
@@ -448,7 +465,7 @@ import {
   buildDecoderBank, readDecoderLevels, smoothLevels,
   audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic,
   levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline,
-  createDetectionLock, updateDetectionLock,
+  createDetectionLock, updateDetectionLock, readPeaks,
 } from "./luminous-decode.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
 
@@ -476,6 +493,7 @@ let saRunning = false, saPaused = false, saRafId = null, saPhaseStart = 0, saMod
 let saCurrentTrack = null;
 const saDetectionLock = createDetectionLock();
 let saSensitivity = 4;
+let saFlickerContrast = 0.6;
 let saCountdownTimer = null, saConfirmTimer = null, saFadeTimer = null, saWakeLock = null, saStopTimer = null;
 let saDecodeLastTime = 0;
 
@@ -516,6 +534,7 @@ async function startStandaloneSequence(track){
   const prefs = getLuminousPrefs();
   ssBrightness.value = prefs.screenBrightnessDefault;
   saSensitivity = prefs.sensitivity;
+  saFlickerContrast = (prefs.flickerContrast ?? 60) / 100;
 
   try{ saCtx = new (window.AudioContext || window.webkitAudioContext)({ sampleRate: 48000 }); }
   catch(e){ saCtx = new (window.AudioContext || window.webkitAudioContext)(); }
@@ -620,27 +639,28 @@ function saLoop(now){
   }
 
   const levels = smoothLevels(saDecoderBank, rawLevels, dtSeconds);
+  const peaks = readPeaks(saDecoderBank);
   const brightnessCeiling = parseInt(ssBrightness.value, 10) / 100;
   const baseline = noiseBaseline(rawLevels);
 
   if(activeFormat === "lumasonic" && currentlyPresent){
     saMode = "lumasonic";
-    const l = levelsToColorLumasonic(levels.left, baseline), r = levelsToColorLumasonic(levels.right, baseline);
+    const l = levelsToColorLumasonic(levels.left, peaks.left, baseline, saFlickerContrast), r = levelsToColorLumasonic(levels.right, peaks.right, baseline, saFlickerContrast);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(activeFormat === "spectrastrobe" && currentlyPresent){
     saMode = "spectra";
-    const l = levelsToColorSpectra(levels.left, baseline), r = levelsToColorSpectra(levels.right, baseline);
+    const l = levelsToColorSpectra(levels.left, peaks.left, baseline, saFlickerContrast), r = levelsToColorSpectra(levels.right, peaks.right, baseline, saFlickerContrast);
     ssLeft.style.backgroundColor = `rgb(${l.r}, ${l.g}, ${l.b})`;
     ssRight.style.backgroundColor = `rgb(${r.r}, ${r.g}, ${r.b})`;
     ssLeft.style.opacity = brightnessCeiling.toFixed(3);
     ssRight.style.opacity = brightnessCeiling.toFixed(3);
   } else if(activeFormat === "audiostrobe" && currentlyPresent){
     if(saMode !== "audiostrobe"){ saMode = "audiostrobe"; ssLeft.style.backgroundColor = ""; ssRight.style.backgroundColor = ""; }
-    ssLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
-    ssRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
+    ssLeft.style.opacity = (adaptiveBrightness(levels.left.as, peaks.left.as, baseline, saFlickerContrast) * brightnessCeiling).toFixed(3);
+    ssRight.style.opacity = (adaptiveBrightness(levels.right.as, peaks.right.as, baseline, saFlickerContrast) * brightnessCeiling).toFixed(3);
   } else {
     // No signal right now — either still building confidence on format, or
     // a genuinely quiet passage in an already-locked track. Go dark rather

@@ -7,19 +7,19 @@ export function renderNav(activePage){
   const root = document.getElementById("site-nav");
   if(!root) return;
   root.innerHTML = `
-    <a href="/index.html" class="site-nav-logo">
-      ${logoSVG(22)}
-      <span class="site-nav-title">VibroFlō</span>
-    </a>
-    <div class="site-nav-right">
-      <div class="site-nav-links">
-        <a href="/index.html" data-page="index">Home</a>
-        <a href="/session.html" data-page="session">Session</a>
-        <a href="/luminous.html" data-page="luminous">Luminous</a>
-        <a href="/settings.html" data-page="settings">Settings</a>
-        <a href="/about.html" data-page="about">About</a>
-      </div>
+    <div class="site-nav-left">
+      <a href="/index.html" class="site-nav-logo">
+        ${logoSVG(22)}
+        <span class="site-nav-title">VibroFlō</span>
+      </a>
       <a href="/guide.html" class="site-nav-help" title="Guide">?</a>
+    </div>
+    <div class="site-nav-links">
+      <a href="/index.html" data-page="index">Home</a>
+      <a href="/session.html" data-page="session">Session</a>
+      <a href="/luminous.html" data-page="luminous">Luminous</a>
+      <a href="/settings.html" data-page="settings">Settings</a>
+      <a href="/about.html" data-page="about">About</a>
     </div>
   `;
   root.querySelectorAll("[data-page]").forEach(a => {

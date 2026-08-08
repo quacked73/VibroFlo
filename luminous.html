@@ -76,12 +76,24 @@
           <div class="switch" id="prefFollowMusicSwitch"><div class="knob"></div></div>
         </div>
 
+        <div class="ctrl-row">
+          <div class="ctrl-label">Flash duty cycle<small>how much of each cycle the flash is on. Lower means a shorter flash against a longer dark phase, which reads as a much more distinct flicker at faster rates — and is a stronger stimulus, not just a look. 50% is an even on/off</small></div>
+          <input type="range" id="prefFlickerDuty" min="10" max="90" step="1" value="50">
+          <div class="ctrl-value"><span id="prefFlickerDutyVal">50</span>%</div>
+        </div>
+
         <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:22px 0 4px;">Decoding a real embedded signal</div>
 
         <div class="ctrl-row">
           <div class="ctrl-label">Decoder sensitivity<small>how weak a signal still counts as real — 5 is the practical floor. SpectraStrobe runs more sensitive than this at every level, since it reads dimmer than a Kasina decoding the same file. Only matters for real tracks — nothing to detect in a generated signal</small></div>
           <input type="range" id="prefSensitivity" min="1" max="5" step="1" value="4">
           <div class="ctrl-value"><span id="prefSensitivityVal">4</span></div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Flicker contrast<small>how hard the off-phase is driven to true black. Higher gives a sharper, more distinct strobe — matters most at 15Hz and above, where a soft fade reads as a continuous glow instead of a flicker. Lower is gentler</small></div>
+          <input type="range" id="prefFlickerContrast" min="0" max="100" step="1" value="60">
+          <div class="ctrl-value"><span id="prefFlickerContrastVal">60</span>%</div>
         </div>
       </div>
     </div>

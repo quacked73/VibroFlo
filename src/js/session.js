@@ -14,7 +14,7 @@ import { showLuminousWarning, showScreenStrobeWarning } from "./luminous-safety.
 import { bestFitLuminousRate, computeEyeDriftOffset, computeBrightnessWander, driftScaleForBand } from "./luminous-math.js";
 import { getLuminousPrefs } from "./luminous-prefs.js";
 import { broadcastStopAll, onBroadcastStopAll } from "./luminous-broadcast.js";
-import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline, createDetectionLock, updateDetectionLock } from "./luminous-decode.js";
+import { buildDecoderBank, readDecoderLevels, smoothLevels, audioStrobeSignalPresent, detectSpectraStrobeReference, detectLumasonic, levelsToColorSpectra, levelsToColorLumasonic, signalStrengthFactor, adaptiveBrightness, noiseBaseline, createDetectionLock, updateDetectionLock, readPeaks } from "./luminous-decode.js";
 
 renderNav("session");
 document.getElementById("logoMark").innerHTML = logoSVG(34);
@@ -677,10 +677,25 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
 
     const leftRate = Math.max(0.1, baseRate - eyeOffset/2);
     const rightRate = Math.max(0.1, baseRate + eyeOffset/2);
-    // Square-ish flash: a raised sine, sharper than the audio version's
-    // smooth gate, since a screen flash reads better as a distinct pulse.
-    const leftPhase = (Math.sin(2*Math.PI*leftRate*phaseTime) + 1) / 2;
-    const rightPhase = (Math.sin(2*Math.PI*rightRate*phaseTime) + 1) / 2;
+    // Duty-cycled pulse rather than a sine. A sine spends most of each cycle
+    // ramping through mid brightness, and the visual system responds to
+    // luminance *transitions* — so a sine reads as a soft throb where a gated
+    // pulse reads as a distinct flash. Duty is the more useful control than
+    // waveform shape here: at the rates that matter (15Hz+) a 60Hz display
+    // only gives ~3-4 frames per cycle, so a "smooth" sine is already a
+    // coarse staircase and the sine-vs-square distinction largely collapses.
+    // Shortening the ON portion instead makes the dark phase dominate, which
+    // is what actually makes a fast flicker visible.
+    //
+    // Note this is a genuine intensity control, not a cosmetic one — a
+    // shorter, harder pulse is a stronger stimulus.
+    const duty = Math.max(0.05, Math.min(0.95, (luminousPrefs.flickerDuty ?? 50) / 100));
+    const pulse = (rate) => {
+      const posInCycle = (rate * phaseTime) % 1;
+      return posInCycle < duty ? 1 : 0;
+    };
+    const leftPhase = pulse(leftRate);
+    const rightPhase = pulse(rightRate);
 
     screenStrobeLeft.style.opacity = (leftPhase * brightness).toFixed(3);
     screenStrobeRight.style.opacity = (rightPhase * brightness).toFixed(3);
@@ -728,20 +743,22 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
     }
 
     const levels = smoothLevels(luminousDecoderBank, rawLevels, dtSeconds);
+    const peaks = readPeaks(luminousDecoderBank);
     const baseline = noiseBaseline(rawLevels);
+    const contrast = (luminousPrefs.flickerContrast ?? 60) / 100;
 
     if(activeFormat === "lumasonic" && currentlyPresent){
       screenStrobeCurrentMode = "decode-lumasonic";
-      const leftColor = levelsToColorLumasonic(levels.left, baseline);
-      const rightColor = levelsToColorLumasonic(levels.right, baseline);
+      const leftColor = levelsToColorLumasonic(levels.left, peaks.left, baseline, contrast);
+      const rightColor = levelsToColorLumasonic(levels.right, peaks.right, baseline, contrast);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       screenStrobeLeft.style.opacity = brightnessCeiling.toFixed(3);
       screenStrobeRight.style.opacity = brightnessCeiling.toFixed(3);
     } else if(activeFormat === "spectrastrobe" && currentlyPresent){
       screenStrobeCurrentMode = "decode-color";
-      const leftColor = levelsToColorSpectra(levels.left, baseline);
-      const rightColor = levelsToColorSpectra(levels.right, baseline);
+      const leftColor = levelsToColorSpectra(levels.left, peaks.left, baseline, contrast);
+      const rightColor = levelsToColorSpectra(levels.right, peaks.right, baseline, contrast);
       screenStrobeLeft.style.backgroundColor = `rgb(${leftColor.r}, ${leftColor.g}, ${leftColor.b})`;
       screenStrobeRight.style.backgroundColor = `rgb(${rightColor.r}, ${rightColor.g}, ${rightColor.b})`;
       // Deliberately no fadeInFactor here — decoding a real signal should
@@ -755,8 +772,8 @@ document.getElementById("logoMark").innerHTML = logoSVG(34);
         screenStrobeLeft.style.backgroundColor = "";
         screenStrobeRight.style.backgroundColor = "";
       }
-      screenStrobeLeft.style.opacity = (adaptiveBrightness(levels.left.as, baseline) * brightnessCeiling).toFixed(3);
-      screenStrobeRight.style.opacity = (adaptiveBrightness(levels.right.as, baseline) * brightnessCeiling).toFixed(3);
+      screenStrobeLeft.style.opacity = (adaptiveBrightness(levels.left.as, peaks.left.as, baseline, contrast) * brightnessCeiling).toFixed(3);
+      screenStrobeRight.style.opacity = (adaptiveBrightness(levels.right.as, peaks.right.as, baseline, contrast) * brightnessCeiling).toFixed(3);
     } else {
       // No signal right now — either still building confidence on which
       // format this is, or a genuinely quiet passage in an already-locked

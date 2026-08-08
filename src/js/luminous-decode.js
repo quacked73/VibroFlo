@@ -137,24 +137,45 @@ export function readDecoderLevels(bank){
 // reading — it runs the decoded signal through an envelope follower first,
 // smoothing it into a clean rise and fall. Without an equivalent stage here,
 // raw per-frame jitter can look like an inconsistent or outright different
-// flash rate even when the underlying detection is accurate. Attack is fast
-// (catches real brightness increases promptly); release is a bit slower
-// (avoids a flickery, noisy fall-off) — the same asymmetric shape real
-// envelope followers use.
-const ATTACK_MS = 8, RELEASE_MS = 25;
+// flash rate even when the underlying detection is accurate.
+//
+// Release has to stay well under the shortest off-phase we care about, or
+// the light never actually gets dark. At 20Hz the off-phase is only 25ms, so
+// a 25ms release constant leaves brightness still at ~37% when the next
+// on-phase arrives — which reads as a continuous glow rather than a strobe.
+// 8ms release reaches roughly 4% within that same 25ms window, so a genuine
+// dark phase exists even at the top of the entrainment range.
+const ATTACK_MS = 4, RELEASE_MS = 8;
+
+// How fast the running peak forgets. Rises instantly (so a new louder
+// passage is tracked immediately) but decays slowly, so it does NOT collapse
+// during an off-phase — that would make the trough look like a peak and
+// destroy the contrast this exists to preserve.
+const PEAK_DECAY_MS = 1500;
 
 export function smoothLevels(bank, rawLevels, dtSeconds){
   if(!bank.smoothed) bank.smoothed = { left: {}, right: {} };
+  if(!bank.peaks) bank.peaks = { left: {}, right: {} };
+  const dt = Math.max(0.001, dtSeconds);
+  const peakAlpha = 1 - Math.exp(-dt / (PEAK_DECAY_MS / 1000));
   for(const side of ["left", "right"]){
     for(const key of Object.keys(rawLevels[side])){
       const prev = bank.smoothed[side][key] ?? 0;
       const raw = rawLevels[side][key];
       const tc = (raw > prev ? ATTACK_MS : RELEASE_MS) / 1000;
-      const alpha = 1 - Math.exp(-Math.max(0.001, dtSeconds) / tc);
-      bank.smoothed[side][key] = prev + (raw - prev) * alpha;
+      const alpha = 1 - Math.exp(-dt / tc);
+      const next = prev + (raw - prev) * alpha;
+      bank.smoothed[side][key] = next;
+
+      const prevPeak = bank.peaks[side][key] ?? 0;
+      bank.peaks[side][key] = next > prevPeak ? next : prevPeak + (next - prevPeak) * peakAlpha;
     }
   }
   return bank.smoothed;
+}
+
+export function readPeaks(bank){
+  return bank.peaks || { left: {}, right: {} };
 }
 
 // A live noise baseline instead of one fixed guessed number — real tracks
@@ -166,18 +187,35 @@ export function noiseBaseline(levels){
   return Math.max(0.0008, (levels.left.noise + levels.right.noise) / 2);
 }
 
-// How many times above the noise floor counts as "fully bright." Kept
-// deliberately lower than the detection thresholds above (1.2-2.5x) —
-// something that's clearly registering as real signal should also look
-// clearly bright, not require several more multiples of margin on top of
-// what already counted as detected. A fixed absolute gain couldn't adapt to
-// how loud any given track's own encoding happened to be; this scales with
-// it instead, the same idea already used for detection.
-const BRIGHTNESS_TARGET_RATIO = 3.5;
+// The old approach mapped brightness from the absolute ratio above the noise
+// floor and clamped at 1.0 — which quietly destroyed the strobe on exactly
+// the content it should work best on. With a strong embedded signal, BOTH the
+// on-phase and the off-phase landed above the clamp ceiling, so both rendered
+// as full white and the screen looked continuously lit. Normalising against
+// the recently observed peak instead keeps the full 0-1 range available no
+// matter how loud the track's encoding happens to be.
+//
+// The gate curve on top is what guarantees an actually-black off-phase.
+// contrast 0 leaves the response linear (a soft, gentle pulse); contrast 1
+// makes it a hard on/off square gate, matching how real AVS hardware drives
+// an LED. Anything below the low edge snaps to true black rather than
+// lingering at a dim glow that the eye integrates into "always on" at 18-20Hz.
+function applyGate(x, contrast){
+  const c = Math.max(0, Math.min(1, contrast ?? 0.6));
+  const lo = 0.5 * c;
+  const hi = 1 - 0.5 * c;
+  if(hi <= lo) return x >= 0.5 ? 1 : 0; // fully square at contrast 1
+  return Math.max(0, Math.min(1, (x - lo) / (hi - lo)));
+}
 
-export function adaptiveBrightness(level, baseline){
-  const ratio = level / baseline;
-  return Math.max(0, Math.min(1, (ratio - 1) / (BRIGHTNESS_TARGET_RATIO - 1)));
+// Normalises a level into 0-1 against its own recent peak, with the noise
+// floor as the bottom of the range, then shapes it through the gate curve.
+export function adaptiveBrightness(level, peak, baseline, contrast){
+  const floor = baseline;
+  const top = Math.max(peak ?? 0, floor * 1.5); // guard against a degenerate range before any peak is established
+  if(top <= floor) return 0;
+  const normalized = (level - floor) / (top - floor);
+  return applyGate(Math.max(0, Math.min(1, normalized)), contrast);
 }
 
 // A continuous 0-1 value for a live strength indicator, rather than the
@@ -245,14 +283,15 @@ export function audioStrobeSignalPresent(levels, sensitivityLevel){
 }
 
 // Scales all three channels by the same factor, based on how far the
-// strongest one sits above the noise floor — this is what keeps hue intact
-// (a channel that's genuinely twice as strong as another stays twice as
-// strong in the output) while still using the adaptive brightness curve
-// above, rather than three independently-maxing channels that would wash
-// out any real color balance into white.
-function adaptiveColorScale(rLevel, gLevel, bLevel, baseline){
+// strongest one sits within its own recently observed range — this is what
+// keeps hue intact (a channel that's genuinely twice as strong as another
+// stays twice as strong in the output) while still getting a real gated
+// off-phase, rather than three independently-maxing channels that would wash
+// out any real colour balance into white.
+function adaptiveColorScale(rLevel, gLevel, bLevel, rPeak, gPeak, bPeak, baseline, contrast){
   const maxLevel = Math.max(rLevel, gLevel, bLevel);
-  const confidence = adaptiveBrightness(maxLevel, baseline);
+  const maxPeak = Math.max(rPeak || 0, gPeak || 0, bPeak || 0);
+  const confidence = adaptiveBrightness(maxLevel, maxPeak, baseline, contrast);
   const scale = (v) => Math.round(255 * confidence * (maxLevel > 0 ? v / maxLevel : 0));
   return { r: scale(rLevel), g: scale(gLevel), b: scale(bLevel) };
 }
@@ -261,12 +300,20 @@ function adaptiveColorScale(rLevel, gLevel, bLevel, baseline){
 // order is genuinely different between the two codecs (Lumasonic runs
 // high-to-low R→G→B, SpectraStrobe runs low-to-high), not a copy-paste
 // inconsistency.
-export function levelsToColorLumasonic(sideLevels, baseline){
-  return adaptiveColorScale(sideLevels.ls_r, sideLevels.ls_g, sideLevels.ls_b, baseline);
+export function levelsToColorLumasonic(sideLevels, sidePeaks, baseline, contrast){
+  return adaptiveColorScale(
+    sideLevels.ls_r, sideLevels.ls_g, sideLevels.ls_b,
+    sidePeaks.ls_r, sidePeaks.ls_g, sidePeaks.ls_b,
+    baseline, contrast
+  );
 }
 
-export function levelsToColorSpectra(sideLevels, baseline){
-  return adaptiveColorScale(sideLevels.ss_r, sideLevels.ss_g, sideLevels.ss_b, baseline);
+export function levelsToColorSpectra(sideLevels, sidePeaks, baseline, contrast){
+  return adaptiveColorScale(
+    sideLevels.ss_r, sideLevels.ss_g, sideLevels.ss_b,
+    sidePeaks.ss_r, sidePeaks.ss_g, sidePeaks.ss_b,
+    baseline, contrast
+  );
 }
 
 // Without this, which codec is "active" gets re-decided completely fresh
