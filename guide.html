@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>VibroFlō — Guide</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+  <div id="site-nav" class="site-nav"></div>
+
+  <div class="console">
+    <div class="hero-eyebrow">
+      <b style="color:var(--text); display:block; margin-bottom:4px; font-size:13px;">Guide</b>
+      What everything is for, and why you might reach for it
+    </div>
+
+    <div class="section dim-target" style="border-top:none; padding-top:8px;">
+      <div class="callout">
+        Nothing on this page is required reading. VibroFlō is built so you can ignore all of it — pick a
+        mood on Home, press Start, and that's the whole app. This exists for whenever you're curious what
+        a specific thing actually does, or why it's there at all. Jump straight to what you need:
+      </div>
+      <div class="pillrow" style="margin-top:12px;">
+        <a href="#quick-start" class="pill" style="text-decoration:none;">Quick Start</a>
+        <a href="#core-idea" class="pill" style="text-decoration:none;">The Core Idea</a>
+        <a href="#session" class="pill" style="text-decoration:none;">Session</a>
+        <a href="#luminous" class="pill" style="text-decoration:none;">Luminous</a>
+        <a href="#settings" class="pill" style="text-decoration:none;">Settings</a>
+      </div>
+    </div>
+
+    <div class="section dim-target" id="quick-start">
+      <div class="section-title">Quick Start</div>
+      <p>Go to Home. Pick whatever matches how you want to feel — for focus, for relaxation, or one of the
+      session arcs. Press the tile. Press Start. That's genuinely the entire app if you want it to be —
+      everything past this point is optional depth for when you want more control, not a prerequisite for
+      using it well.</p>
+    </div>
+
+    <div class="section dim-target" id="core-idea">
+      <div class="section-title">The Core Idea</div>
+      <p>VibroFlō is built around two engines, called <b>Low</b> and <b>High</b>. Both work the same way
+      underneath — each ear hears a slightly different pitch, and your brain perceives the small difference
+      between them as a third, slower pulse that isn't actually present in either tone on its own (a
+      "binaural beat"). The Low engine sits in a felt-more-than-heard range, closer to what a vibroacoustic
+      table uses. The High engine sits in the range most people mean when they say "binaural beats." Neither
+      is "better" — they're different textures of the same underlying idea, and Combine mode runs both at once.</p>
+      <p>That pulse rate is described using five bands, borrowed from how brainwave activity is commonly
+      grouped: <b>Delta</b> (deep rest), <b>Theta</b> (relaxed), <b>Alpha</b> (calm focus), <b>Beta</b>
+      (alertness), and <b>Gamma</b> (high engagement). Picking a band is picking a target state, not a
+      guarantee — it's a steady external rhythm offered as an invitation, not a switch.</p>
+    </div>
+
+    <div class="section dim-target" id="session">
+      <div class="section-title">Session, piece by piece</div>
+
+      <p><b>Session Arc</b> is for when you have a clear before-and-after in mind — winding down from alert
+      focus into calm, for example — rather than sitting in one target state the whole time. It glides
+      between two bands over the course of the session instead of holding one the entire way through.</p>
+
+      <p><b>Variability Drift</b> adds a slow, natural wander to the tone. A perfectly steady pulse can
+      start to feel oddly noticeable or fatiguing over a long session, the same way a perfectly silent room
+      can feel louder than one with soft background sound. Drift keeps it from ever settling into something
+      rigid.</p>
+
+      <p><b>EMDR Bilateral Pan</b> is an alternating left-right sound, inspired by (not a replacement for) a
+      real talk-therapy technique some people use to help process difficult or anxious thoughts. It's
+      entirely optional and does nothing unless you turn it on — most sessions won't want it.</p>
+
+      <p><b>Masking Bed</b> softens the tone specifically for shared or open spaces, using a filter that
+      keeps the low end intact while taking the edge off anything that might otherwise carry across a room.</p>
+
+      <p><b>Ambient Layer</b> is real recorded audio — your own library, managed in Settings — that plays
+      underneath everything else. You can queue specific tracks in order, or let it loop through your whole
+      library on its own.</p>
+
+      <p><b>Session Length and ending style</b> decide how the session finishes: a gentle fade to silence,
+      or a slow fade-up in brightness and volume if you're using a session to wake up rather than wind down.</p>
+
+      <p><b>Check-in</b> is a quick mood tap before and after each session. On its own it's a small thing;
+      over time it builds an honest, simple picture of what's actually helping, rather than relying on
+      memory.</p>
+    </div>
+
+    <div class="section dim-target" id="luminous">
+      <div class="section-title">Luminous</div>
+      <p>This is the newest and most involved part of the app, so it gets the most space here.</p>
+
+      <p>Some light-and-sound machines — the MindPlace Kasina is the one this was built and tested
+      against — read a control signal hidden in specific tones, well above normal hearing range, to flash
+      LEDs in time with audio. Three different formats do this, and VibroFlō supports all three because
+      real content in the wild actually uses all three: <b>AudioStrobe</b> (one tone, brightness only),
+      <b>SpectraStrobe</b> (four tones, independent red/green/blue color), and <b>Lumasonic</b> (a newer,
+      similar four-tone color scheme with its own frequencies). You don't need to know which is which to
+      use this — VibroFlō figures it out.</p>
+
+      <p>There are two genuinely different ways to use Luminous, and it's worth being clear on which one
+      you're in:</p>
+      <p><b>Luminous Sync</b>, on the Session page, <i>generates</i> a signal live, synced to whichever
+      engine is running, for compatible external hardware like a Kasina. <b>Screen Mode</b> instead uses
+      your phone's own screen — no external hardware at all. Screen Mode can also work the other way: if a
+      track you're playing already has a real signal embedded in it, Screen Mode can <i>decode</i> that
+      instead of generating its own, showing you exactly what's actually encoded.</p>
+
+      <p>For decoding, a track can either be auto-detected, or manually tagged with a specific format in
+      Settings. Auto-detect builds confidence over a brief window before committing to a format, specifically
+      so a few noisy or borderline moments can't flip the result back and forth. A manual tag skips that
+      entirely and locks immediately — the stronger guarantee, for tracks where you already know the
+      answer. Get a manual tag wrong, though, and it stays silent rather than guessing — which is exactly
+      why tags are editable any time in Settings, not just set once at add-time.</p>
+
+      <p><b>Why the safety warnings exist:</b> flashing light between roughly 10 and 25Hz — squarely where
+      normal brainwave-entrainment rates live — is the range most associated with triggering seizures in
+      people with photosensitive epilepsy. That's not a hypothetical caveat, it's a real, documented risk,
+      which is why Luminous asks for confirmation every single time it's turned on, not just once, and why
+      Screen Mode specifically carries a stronger warning — a screen held against closed eyes is a closer,
+      brighter light source than any external hardware this app supports.</p>
+
+      <p>The <b>Test Your Hardware</b> tab is a deliberate lab bench, separate from a real session — a way
+      to confirm your specific device and cables actually reproduce a signal correctly, including isolating
+      individual color channels, before relying on it live.</p>
+    </div>
+
+    <div class="section dim-target" id="settings">
+      <div class="section-title">Settings</div>
+      <p>Files you add here become available to the Ambient Layer on Session and to Luminous's decoder.
+      The light-signal tag on each file matters more than it might seem — it's what tells Screen Mode
+      whether to attempt decoding at all, and which format to expect if so. Getting it right (or fixing it
+      later, which is always available) is the difference between Luminous working cleanly and it staying
+      dark waiting for a signal that isn't where it expects.</p>
+      <p>Backup exports your presets, session history, Luminous preferences, and format-tag edits as one
+      file you can move to another device or keep as a backup — deliberately not including the actual
+      audio you've uploaded locally, since that can be too large to make a portable file practical.</p>
+      <p>For the deeper "why does any of this work" theory — what a binaural beat actually is, vibroacoustic
+      therapy, the research behind it — that lives on the <a href="/about.html">About page</a>, kept
+      separate from this practical guide on purpose.</p>
+    </div>
+  </div>
+
+<script type="module" src="/src/js/guide.js"></script>
+</body>
+</html>

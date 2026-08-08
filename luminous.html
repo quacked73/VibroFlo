@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>VibroFlō — Luminous Settings</title>
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<link rel="stylesheet" href="/src/styles/main.css">
+</head>
+<body>
+
+  <div id="site-nav" class="site-nav"></div>
+
+  <div class="console">
+    <div class="hero-eyebrow">
+      <b style="color:var(--text); display:block; margin-bottom:4px; font-size:13px;">Luminous Settings</b>
+      Configure how light-sync behaves during real sessions, and test your connected hardware
+      &nbsp;·&nbsp; <a href="/guide.html#luminous" style="color:var(--muted); text-decoration:none;">Full guide →</a>
+    </div>
+
+    <div class="tab-row" style="padding-top:10px;">
+      <div class="pill active" data-tab="settings">Settings</div>
+      <div class="pill" data-tab="hardware">Test Hardware</div>
+      <div class="pill" data-tab="play">Play a File</div>
+    </div>
+
+    <div id="panel-settings">
+      <div class="section dim-target" style="border-top:none; padding-top:8px;">
+        <div class="section-title">Live Session Behavior</div>
+        <div class="callout">
+          These apply the next time you start a session with Luminous or Screen Mode turned on — on the
+          Session page itself, they stay out of the way as simple on/off toggles.
+        </div>
+
+        <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:18px 0 4px;">General</div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Fade-in duration<small>how gently a session eases in, instead of jumping straight to full intensity. Skipped when Screen Mode is decoding a real signal, for an accurate hardware comparison</small></div>
+          <input type="range" id="prefFadeIn" min="0" max="30" step="1" value="10">
+          <div class="ctrl-value"><span id="prefFadeInVal">10</span>s</div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Screen Mode countdown<small>time to get positioned before the flicker starts</small></div>
+          <input type="range" id="prefCountdown" min="5" max="15" step="1" value="6">
+          <div class="ctrl-value"><span id="prefCountdownVal">6</span>s</div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Screen Mode default brightness<small>where the brightness slider starts — still adjustable each time</small></div>
+          <input type="range" id="prefScreenBrightness" min="15" max="100" step="1" value="70">
+          <div class="ctrl-value"><span id="prefScreenBrightnessVal">70</span>%</div>
+        </div>
+
+        <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:22px 0 4px;">Generating a signal — no real embedded content</div>
+        <div class="callout" style="font-size:12px;">
+          These three only apply when Luminous makes up its own pattern — the signal sent to external
+          hardware, or Screen Mode's flicker when the track playing has no real embedded signal. None of
+          them affect decoding a real Lumasonic, SpectraStrobe, or AudioStrobe track.
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Eye drift<small>lets left and right slowly wander out of sync and back, instead of flashing in rigid lockstep</small></div>
+          <input type="range" id="prefEyeDrift" min="0" max="100" step="1" value="40">
+          <div class="ctrl-value"><span id="prefEyeDriftVal">40</span>%</div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Brightness variation<small>a subtle natural wander in intensity, so the light breathes rather than blinks at one fixed level</small></div>
+          <input type="range" id="prefBrightnessVar" min="0" max="100" step="1" value="30">
+          <div class="ctrl-value"><span id="prefBrightnessVarVal">30</span>%</div>
+        </div>
+
+        <div class="toggle-line">
+          <div class="ctrl-label">Follow Music by default<small>brightness tracks the ambient track's volume instead of the drift wander above. Only affects the external-hardware signal — Screen Mode never uses this one</small></div>
+          <div class="switch" id="prefFollowMusicSwitch"><div class="knob"></div></div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Flash duty cycle<small>how much of each cycle the flash is on. Lower means a shorter flash against a longer dark phase, which reads as a much more distinct flicker at faster rates — and is a stronger stimulus, not just a look. 50% is an even on/off</small></div>
+          <input type="range" id="prefFlickerDuty" min="10" max="90" step="1" value="50">
+          <div class="ctrl-value"><span id="prefFlickerDutyVal">50</span>%</div>
+        </div>
+
+        <div style="color:var(--muted); font-size:11px; text-transform:uppercase; letter-spacing:0.5px; margin:22px 0 4px;">Decoding a real embedded signal</div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Decoder sensitivity<small>how weak a signal still counts as real — 5 is the practical floor. SpectraStrobe runs more sensitive than this at every level, since it reads dimmer than a Kasina decoding the same file. Only matters for real tracks — nothing to detect in a generated signal</small></div>
+          <input type="range" id="prefSensitivity" min="1" max="5" step="1" value="4">
+          <div class="ctrl-value"><span id="prefSensitivityVal">4</span></div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Flicker contrast<small>how hard the off-phase is driven to true black. Higher gives a sharper, more distinct strobe — matters most at 15Hz and above, where a soft fade reads as a continuous glow instead of a flicker. Lower is gentler</small></div>
+          <input type="range" id="prefFlickerContrast" min="0" max="100" step="1" value="60">
+          <div class="ctrl-value"><span id="prefFlickerContrastVal">60</span>%</div>
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-hardware" style="display:none;">
+      <div class="section dim-target" style="border-top:none; padding-top:8px;">
+        <div class="section-title">Test Your Hardware</div>
+        <div class="callout">
+          Some light-and-sound machines — like the MindPlace Kasina — read tones hidden above normal
+          hearing range to flash their LEDs in sync with audio. <b>AudioStrobe</b> uses one tone for
+          brightness only; <b>SpectraStrobe</b> uses four for independent color. Use this to confirm
+          your specific device and cables actually reproduce whichever one you're testing.
+        </div>
+
+        <div class="pill-ctrl">
+          <div class="pillrow" id="lumModeRow">
+            <div class="pill active" data-mode="audiostrobe">AudioStrobe</div>
+            <div class="pill" data-mode="spectrastrobe">SpectraStrobe</div>
+          </div>
+        </div>
+
+        <div id="asControlsWrap">
+          <div class="ctrl-row">
+            <div class="ctrl-label">Carrier frequency<small>19200Hz is the AudioStrobe standard — adjust only to test what your device can actually reproduce</small></div>
+            <input type="range" id="lumFreq" min="15000" max="20000" step="100" value="19200">
+            <div class="ctrl-value"><span id="lumFreqVal">19200</span>Hz</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Pulse rate<small>how fast the light flashes</small></div>
+            <input type="range" id="lumRate" min="0.5" max="20" step="0.1" value="10">
+            <div class="ctrl-value"><span id="lumRateVal">10.0</span>Hz</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Gate depth<small>100% = full on/off flash, lower = dimmer pulse instead of a hard cut</small></div>
+            <input type="range" id="lumDepth" min="0" max="100" step="1" value="100">
+            <div class="ctrl-value"><span id="lumDepthVal">100</span>%</div>
+          </div>
+
+          <div class="pill-ctrl">
+            <div class="ctrl-label" style="margin-bottom:8px;">Gate shape</div>
+            <div class="pillrow" id="lumShapeRow">
+              <div class="pill active" data-shape="sine">Smooth</div>
+              <div class="pill" data-shape="square">Sharp</div>
+            </div>
+          </div>
+        </div>
+
+        <div id="ssControlsWrap" style="display:none;">
+          <div class="ctrl-row">
+            <div class="ctrl-label">Red<small>18700Hz — set to 0 to test green/blue in isolation</small></div>
+            <input type="range" id="ssRed" min="0" max="100" step="1" value="100">
+            <div class="ctrl-value"><span id="ssRedVal">100</span>%</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Green<small>19200Hz — set to 0 to test red/blue in isolation</small></div>
+            <input type="range" id="ssGreen" min="0" max="100" step="1" value="0">
+            <div class="ctrl-value"><span id="ssGreenVal">0</span>%</div>
+          </div>
+
+          <div class="ctrl-row">
+            <div class="ctrl-label">Blue<small>19700Hz — set to 0 to test red/green in isolation</small></div>
+            <input type="range" id="ssBlue" min="0" max="100" step="1" value="0">
+            <div class="ctrl-value"><span id="ssBlueVal">0</span>%</div>
+          </div>
+
+          <div class="callout" style="font-size:11.5px;">
+            The 18200Hz reference tone that marks this as SpectraStrobe (rather than AudioStrobe) is
+            generated automatically in the background, alternating left/right at the fixed 20Hz the
+            format requires — not something to adjust, since any other rate wouldn't be a valid signal.
+          </div>
+        </div>
+
+        <div class="ctrl-row">
+          <div class="ctrl-label">Signal strength<small>the carrier tone's own volume — needs to be strong enough for the decoder to catch it reliably</small></div>
+          <input type="range" id="lumStrength" min="10" max="100" step="1" value="80">
+          <div class="ctrl-value"><span id="lumStrengthVal">80</span>%</div>
+        </div>
+
+        <div class="pill-ctrl">
+          <div class="ctrl-label" style="margin-bottom:8px;">Channel</div>
+          <div class="pillrow" id="lumChannelRow">
+            <div class="pill active" data-channel="both">Both</div>
+            <div class="pill" data-channel="left">Left only</div>
+            <div class="pill" data-channel="right">Right only</div>
+          </div>
+        </div>
+
+        <div class="section transport" style="margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+          <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Test signal</div>
+          <div class="power-btn" id="lumPowerBtn">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
+          <div class="callout" id="lumStatus" style="display:none; text-align:center;"></div>
+        </div>
+
+        <div class="callout" style="margin-top:16px; font-size:11.5px;">
+          Requires AudioStrobe/SpectraStrobe-compatible hardware to see any effect, and should be silent
+          or near-silent to most people on ordinary speakers.
+        </div>
+      </div>
+    </div>
+
+    <div id="panel-play" style="display:none;">
+      <div class="section dim-target" style="border-top:none; padding-top:8px;">
+        <div class="section-title">Play a File — Luminous Only</div>
+        <div class="callout">
+          Runs entirely on its own — no need to visit Session or Home. Pick a file with a real
+          embedded Lumasonic/AudioStrobe/SpectraStrobe signal, hit Start, and Screen Mode will
+          decode and display it directly. Nothing here touches the tone engines.
+        </div>
+        <div style="margin-bottom:14px;">
+          <select id="standaloneTrackSelect" class="field-input" style="width:100%;">
+            <option value="">Loading your library…</option>
+          </select>
+        </div>
+        <div class="section transport" style="margin-top:14px; display:flex; flex-direction:column; align-items:center; gap:10px;">
+          <div style="font-family:var(--sans); font-weight:700; font-size:15px;">Start Screen Mode</div>
+          <div class="power-btn" id="standaloneStartBtn">
+            <svg viewBox="0 0 24 24" width="26" height="26" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18.36 6.64a9 9 0 1 1-12.73 0"></path>
+              <line x1="12" y1="2" x2="12" y2="12"></line>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="footnote">
+    Live Session Behavior settings apply automatically on Session — no need to revisit them there.
+  </div>
+
+  <div id="screenStrobeOverlay" class="screen-strobe-overlay" style="display:none;">
+    <div class="screen-strobe-panel" id="screenStrobeLeft"></div>
+    <div class="screen-strobe-panel" id="screenStrobeRight"></div>
+    <div class="screen-strobe-countdown" id="screenStrobeCountdown" style="display:none; flex-direction:column; gap:16px;">
+      <div id="screenStrobeCountdownNum"></div>
+      <div style="font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">☀ Turn your screen brightness all the way up now</div>
+      <div id="screenStrobeRotateHint" style="display:none; font-size:16px; font-weight:400; color:rgba(255,255,255,0.75);">↻ Rotate your phone to landscape for the best fit</div>
+    </div>
+    <div class="screen-strobe-controls" id="screenStrobeControls">
+      <div style="display:flex; align-items:center; justify-content:center; gap:8px; margin-bottom:8px;">
+        <span style="color:#fff; font-family:var(--sans); font-size:12px;">Brightness</span>
+        <span id="screenStrobeSignalDot" class="signal-dot" title="Signal strength"></span>
+      </div>
+      <input type="range" id="screenStrobeBrightness" min="15" max="100" step="1" value="70">
+      <div style="color:rgba(255,255,255,0.6); font-family:var(--sans); font-size:11px; margin-top:14px; text-align:center;">Tap anywhere to stop</div>
+    </div>
+    <div class="screen-strobe-confirm" id="screenStrobeConfirm" style="display:none;">
+      <div style="color:#fff; font-family:var(--sans); font-size:15px; margin-bottom:16px; text-align:center;">Stop Luminous?</div>
+      <div style="display:flex; gap:14px;">
+        <div class="timer-btn" id="screenStrobeConfirmStop" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Stop</div>
+        <div class="timer-btn" id="screenStrobeConfirmContinue" style="cursor:pointer; background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3);">Continue</div>
+      </div>
+    </div>
+  </div>
+
+<script type="module" src="/src/js/luminous.js"></script>
+</body>
+</html>
