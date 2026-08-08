@@ -65,44 +65,47 @@ export function buildDecoderBank(ctx, sourceNode){
     return { analyser, buffer: new Float32Array(analyser.fftSize) };
   }
 
-  // AudioStrobe's tone and the noise reference each stand alone with no
-  // close neighbor to bleed from, so they stay on the wider, faster-reacting
-  // filter — good time resolution matters more than extreme selectivity
-  // when there's nothing nearby to be confused with.
-  const FAST_Q = 12, FAST_FFT = 256;
-
-  // SpectraStrobe and Lumasonic's four tones sit only 500Hz apart. At the
-  // wider setting above, a strong tone can leak into its neighbor's filter
-  // and inflate a channel that isn't actually carrying much signal — this
-  // is a real, measured effect, confirmed by comparing decoded output
-  // against an independent ground-truth spectral analysis of real encoded
-  // content, not just a theoretical concern. Much narrower here trades a
-  // bit of response speed for genuine channel separation — an acceptable
-  // trade since color evolves more slowly than the on/off brightness pulse
-  // itself, which stays on the fast filter above via the "as" entry
-  // (SpectraStrobe/Lumasonic don't have a separate brightness tone the way
-  // AudioStrobe does — brightness there comes from how strongly each color
-  // channel is driven, not a distinct signal of its own).
-  const NARROW_Q = 130, NARROW_FFT = 512;
-
-  const freqs = {
-    as: { freq: AUDIOSTROBE_FREQ, q: FAST_Q, fft: FAST_FFT },
-    noise: { freq: NOISE_REF_FREQ, q: FAST_Q, fft: FAST_FFT },
-    // The reference tones stay on the fast filter too — detecting their
-    // alternation pattern needs good time resolution, not frequency
-    // selectivity, which is a different job than separating the color
-    // tones from each other.
-    ss_ref: { freq: SPECTRA_FREQS.ref, q: FAST_Q, fft: FAST_FFT },
-    ss_r: { freq: SPECTRA_FREQS.r, q: NARROW_Q, fft: NARROW_FFT },
-    ss_g: { freq: SPECTRA_FREQS.g, q: NARROW_Q, fft: NARROW_FFT },
-    ss_b: { freq: SPECTRA_FREQS.b, q: NARROW_Q, fft: NARROW_FFT },
-    ls_ref: { freq: LUMASONIC_FREQS.ref, q: FAST_Q, fft: FAST_FFT },
-    ls_r: { freq: LUMASONIC_FREQS.r, q: NARROW_Q, fft: NARROW_FFT },
-    ls_g: { freq: LUMASONIC_FREQS.g, q: NARROW_Q, fft: NARROW_FFT },
-    ls_b: { freq: LUMASONIC_FREQS.b, q: NARROW_Q, fft: NARROW_FFT },
+  // Every filter's Q is derived from that tone's actual nearest neighbour
+  // across all three codecs, not from a general "narrow vs wide" guess. A
+  // bandpass filter's bandwidth is freq/Q, so a filter needs a high enough Q
+  // that its bandwidth stays comfortably inside the gap to the closest other
+  // tone in use. This matters more than it looks: at a shared low Q, the
+  // AudioStrobe filter at 19200Hz passes roughly 18400-20000Hz, which
+  // swallows ALL THREE SpectraStrobe colour tones (18700/19200/19700) — so
+  // SpectraStrobe content reads as a strong AudioStrobe signal. Likewise a
+  // wide filter on SpectraStrobe's 18200Hz reference picks up Lumasonic's
+  // blue at 18000Hz. Tight, per-tone Q values remove that cross-talk at the
+  // source.
+  //
+  // Tones with no close neighbour (the 16000Hz noise reference, Lumasonic's
+  // 21000/22500) keep a lower Q deliberately — there's nothing nearby to be
+  // confused with, and lower Q reacts faster to real amplitude changes.
+  const TONES = {
+    noise:  { freq: NOISE_REF_FREQ,      q: 16,  fft: 256 },
+    as:     { freq: AUDIOSTROBE_FREQ,    q: 140, fft: 512 },
+    ss_ref: { freq: SPECTRA_FREQS.ref,   q: 190, fft: 512 },
+    ss_r:   { freq: SPECTRA_FREQS.r,     q: 90,  fft: 512 },
+    ss_g:   { freq: SPECTRA_FREQS.g,     q: 140, fft: 512 },
+    ss_b:   { freq: SPECTRA_FREQS.b,     q: 200, fft: 512 },
+    ls_ref: { freq: LUMASONIC_FREQS.ref, q: 40,  fft: 256 },
+    ls_r:   { freq: LUMASONIC_FREQS.r,   q: 40,  fft: 256 },
+    ls_g:   { freq: LUMASONIC_FREQS.g,   q: 200, fft: 512 },
+    ls_b:   { freq: LUMASONIC_FREQS.b,   q: 190, fft: 512 },
   };
-  const bank = { left: {}, right: {}, refHistory: [] };
-  for(const [key, spec] of Object.entries(freqs)){
+
+  // Lumasonic's reference tone (22500Hz) sits above the Nyquist limit of a
+  // 44.1kHz context (22050Hz) — physically unrepresentable at that rate, so
+  // its filter would read aliasing artifacts rather than signal. The code
+  // asks for 48kHz, but that's only a hint the browser may ignore, so check
+  // what actually came back and mark the affected tones unusable rather than
+  // silently decoding noise.
+  const nyquist = ctx.sampleRate / 2;
+  const bank = { left: {}, right: {}, refHistory: [], sampleRate: ctx.sampleRate, unusable: {} };
+  for(const [key, spec] of Object.entries(TONES)){
+    if(spec.freq >= nyquist * 0.98){ // 0.98 margin: a filter right at Nyquist is unreliable even when nominally under it
+      bank.unusable[key] = true;
+      continue;
+    }
     bank.left[key] = bandpass(spec.freq, 0, spec.q, spec.fft);
     bank.right[key] = bandpass(spec.freq, 1, spec.q, spec.fft);
   }
@@ -120,6 +123,13 @@ export function readDecoderLevels(bank){
   const out = { left: {}, right: {} };
   for(const key of Object.keys(bank.left)) out.left[key] = readLevel(bank.left[key]);
   for(const key of Object.keys(bank.right)) out.right[key] = readLevel(bank.right[key]);
+  // A tone skipped as above-Nyquist reports a flat zero rather than being
+  // absent — downstream comparisons then simply never fire for it, instead
+  // of producing NaN from an undefined read.
+  for(const key of Object.keys(bank.unusable || {})){
+    out.left[key] = 0;
+    out.right[key] = 0;
+  }
   return out;
 }
 
@@ -198,24 +208,35 @@ export function detectLumasonic(levels, sensitivityLevel){
 
 // SpectraStrobe's reference tone alternates hard left/right at 20 times a
 // second (confirmed — SS_REF_PAN_LFO_FREQ in the source SDK), signaling
-// "this is SpectraStrobe, not just AudioStrobe." Checking for real, fast
-// alternation in a short rolling window rather than trying to precisely
-// clock the exact rate — noise or a steady pan doesn't produce this
-// pattern, genuine 20Hz alternation does.
-const REF_HISTORY_LEN = 12;
+// "this is SpectraStrobe, not just AudioStrobe."
+//
+// The window here is measured in TIME, not frames. Counting a fixed number
+// of frames silently changes the window length with display refresh rate:
+// 12 frames is 200ms at 60fps but only 100ms at 120fps, and at 20Hz
+// alternation that shorter window contains too few flips to ever pass the
+// threshold — meaning SpectraStrobe would never be detected at all on a
+// 120Hz phone while working fine on a 60Hz one. A time-based window behaves
+// identically on both.
+const REF_WINDOW_MS = 250;           // ~5 full alternation cycles at 20Hz
+const REF_MIN_FLIPS = 5;             // well under the ~10 expected, tolerant of jitter and dropped frames
+const REF_MIN_SAMPLES = 8;           // don't judge until the window has enough points to be meaningful
 
 export function detectSpectraStrobeReference(bank, levels, sensitivityLevel){
+  const now = performance.now();
   const balance = levels.left.ss_ref - levels.right.ss_ref;
-  bank.refHistory.push(balance);
-  if(bank.refHistory.length > REF_HISTORY_LEN) bank.refHistory.shift();
-  if(bank.refHistory.length < REF_HISTORY_LEN) return false;
+  bank.refHistory.push({ t: now, balance });
+  while(bank.refHistory.length && now - bank.refHistory[0].t > REF_WINDOW_MS){
+    bank.refHistory.shift();
+  }
+  if(bank.refHistory.length < REF_MIN_SAMPLES) return false;
+
   let flips = 0;
   for(let i=1;i<bank.refHistory.length;i++){
-    if((bank.refHistory[i] > 0) !== (bank.refHistory[i-1] > 0)) flips++;
+    if((bank.refHistory[i].balance > 0) !== (bank.refHistory[i-1].balance > 0)) flips++;
   }
   const baseline = noiseBaseline(levels);
-  const strongEnough = Math.max(...bank.refHistory.map(Math.abs)) > baseline * spectraRatioForLevel(sensitivityLevel);
-  return strongEnough && flips >= REF_HISTORY_LEN * 0.4;
+  const strongEnough = Math.max(...bank.refHistory.map(e => Math.abs(e.balance))) > baseline * spectraRatioForLevel(sensitivityLevel);
+  return strongEnough && flips >= REF_MIN_FLIPS;
 }
 
 export function audioStrobeSignalPresent(levels, sensitivityLevel){
@@ -250,33 +271,41 @@ export function levelsToColorSpectra(sideLevels, baseline){
 
 // Without this, which codec is "active" gets re-decided completely fresh
 // every single animation frame — and a few noisy or borderline frames can
-// flip the result back and forth. This matters more than it might seem:
-// AudioStrobe's one tone and SpectraStrobe's green channel sit at exactly
-// the same frequency (19200Hz), so a SpectraStrobe reference-tone check
-// that misses on one real-world frame reads as plain AudioStrobe for that
-// frame, then flips back the moment the reference tone is caught again.
-// Committing to whichever format has been consistently detected for a
-// short confirmation window, then sticking with that decision until a new
-// track starts, removes the flicker at its source instead of patching
-// around it downstream. A manual per-track format tag skips the
-// confirmation window entirely and locks immediately, for tracks where the
-// format is already known.
-const LOCK_CONFIRM_FRAMES = 8; // roughly 130ms at 60fps of consistent detection before committing
+// flip the result back and forth.
+//
+// The subtlety that makes a naive version of this WRONG: the three codecs
+// are not independent candidates. AudioStrobe's only tone is 19200Hz, which
+// is exactly SpectraStrobe's green channel — so real SpectraStrobe content
+// makes the AudioStrobe check true immediately, while the SpectraStrobe
+// check needs a rolling window of alternation history before it can report
+// true even once. Racing independent streaks therefore hands the lock to
+// AudioStrobe every time, and SpectraStrobe content plays back as
+// brightness-only with no colour, permanently, looking stable and correct.
+//
+// So the codecs are ranked instead of raced. Lumasonic and SpectraStrobe are
+// identified by reference tones that AudioStrobe simply does not have —
+// those are positive, unambiguous evidence. "Plain AudioStrobe" is the
+// fallback conclusion, and is only allowed to lock after the higher-priority
+// codecs have had a fair chance to speak up and haven't.
+const LOCK_CONFIRM_MS = 150;         // sustained evidence before committing to a colour codec
+const AUDIOSTROBE_GRACE_MS = 500;    // how long to hold off concluding "just AudioStrobe" — must exceed the reference window plus confirm time
+const FORMAT_PRIORITY = ["lumasonic", "spectrastrobe", "audiostrobe"];
 
 export function createDetectionLock(){
-  return { format: null, trackId: undefined, streak: { lumasonic: 0, spectrastrobe: 0, audiostrobe: 0 } };
+  return { format: null, trackId: undefined, since: {}, firstSeen: 0 };
 }
 
 function resetDetectionLock(lock, trackId){
   lock.format = null;
   lock.trackId = trackId;
-  lock.streak = { lumasonic: 0, spectrastrobe: 0, audiostrobe: 0 };
+  lock.since = {};
+  lock.firstSeen = 0;
 }
 
 // candidates: { lumasonic, spectrastrobe, audiostrobe } — this frame's raw,
-// unlocked detection results. forcedFormat: a manual per-track override
-// ("lumasonic" | "spectrastrobe" | "audiostrobe"), if set. Returns the
-// currently-committed format, or null if still building confidence.
+// unlocked detection results. forcedFormat: a manual per-track override,
+// if set. Returns the currently-committed format, or null if still building
+// confidence.
 export function updateDetectionLock(lock, trackId, candidates, forcedFormat){
   if(lock.trackId !== trackId) resetDetectionLock(lock, trackId);
 
@@ -287,16 +316,34 @@ export function updateDetectionLock(lock, trackId, candidates, forcedFormat){
 
   if(lock.format) return lock.format; // already committed for this track — don't re-litigate every frame
 
-  for(const key of ["lumasonic", "spectrastrobe", "audiostrobe"]){
+  const now = performance.now();
+  if(!lock.firstSeen) lock.firstSeen = now;
+
+  // Track how long each candidate has been continuously true.
+  for(const key of FORMAT_PRIORITY){
     if(candidates[key]){
-      lock.streak[key]++;
-      if(lock.streak[key] >= LOCK_CONFIRM_FRAMES){
-        lock.format = key;
-        return lock.format;
-      }
+      if(!lock.since[key]) lock.since[key] = now;
     } else {
-      lock.streak[key] = 0;
+      lock.since[key] = 0;
     }
+  }
+
+  for(const key of FORMAT_PRIORITY){
+    if(!lock.since[key]) continue;
+    const heldFor = now - lock.since[key];
+    if(heldFor < LOCK_CONFIRM_MS) continue;
+
+    // AudioStrobe is a conclusion by elimination, not positive evidence —
+    // its tone is shared with SpectraStrobe's green channel. Only accept it
+    // once the reference-tone codecs have had time to declare themselves and
+    // haven't, and only while neither is currently showing signal.
+    if(key === "audiostrobe"){
+      const elapsed = now - lock.firstSeen;
+      if(elapsed < AUDIOSTROBE_GRACE_MS) continue;
+      if(candidates.lumasonic || candidates.spectrastrobe) continue;
+    }
+    lock.format = key;
+    return lock.format;
   }
   return null;
 }
